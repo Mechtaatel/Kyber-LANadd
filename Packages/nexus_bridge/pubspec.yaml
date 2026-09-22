@@ -14,6 +14,7 @@ dev_dependencies:
   retrofit_generator:
     git:
       url: https://github.com/trevorwang/retrofit.dart.git
+      ref: v10.2.1
       path: generator
   build_runner: '>=2.3.0 <4.0.0'
   json_serializable: ^6.6.2
@@ -22,6 +23,7 @@ dependency_overrides:
   retrofit:
     git:
       url: https://github.com/trevorwang/retrofit.dart.git
+      ref: v10.2.1
       path: retrofit
 
 dependencies:

@@ -208,7 +208,8 @@ void Program::InitializationThread()
     _putenv_s("GAME_DATA_DIR", "");
 
     const char* apiToken = std::getenv("KYBER_API_TOKEN");
-    if (apiToken == nullptr)
+    const bool lanOnly = PlatformUtils::GetEnv("KYBER_LAN_ONLY") == "1";
+    if (apiToken == nullptr && !lanOnly)
     {
         ErrorUtils::ThrowException("No API token specified");
         return;
@@ -216,7 +217,7 @@ void Program::InitializationThread()
 
     ix::initNetSystem();
 
-    m_api = std::make_unique<API>(apiToken);
+    m_api = std::make_unique<API>(apiToken != nullptr ? apiToken : "");
 
     m_interface = std::make_unique<InterfaceService>();
 
@@ -226,7 +227,7 @@ void Program::InitializationThread()
     m_settingsManager = new KyberSettingsManager();
     m_scriptManager = new ScriptManager();
 
-    if (!m_isDedicatedServer)
+    if (!m_isDedicatedServer && !lanOnly)
     {
         m_client->m_voipManager = new VoipManager();
     }
@@ -408,9 +409,12 @@ void MessageManagerDispatchMessageHk(void* inst, Message* message)
         {
             g_program->m_server->m_persistenceManager->SavePlayerStats(msg->m_player);
 
-            g_program->GetAPI()->GetServerManagement()->SendPlayerList();
-            g_program->GetAPI()->GetServerManagement()->SendConsoleMessage(
-                StringUtils::Format("%s (%llu) left the server", msg->m_player->m_name, msg->m_player->m_onlineId.m_nativeData));
+            if (g_program->m_server->m_onlineMode)
+            {
+                g_program->GetAPI()->GetServerManagement()->SendPlayerList();
+                g_program->GetAPI()->GetServerManagement()->SendConsoleMessage(
+                    StringUtils::Format("%s (%llu) left the server", msg->m_player->m_name, msg->m_player->m_onlineId.m_nativeData));
+            }
 
             if (g_program->m_scriptManager != nullptr)
             {
@@ -423,7 +427,10 @@ void MessageManagerDispatchMessageHk(void* inst, Message* message)
         ServerPlayerChatMessage* msg = (ServerPlayerChatMessage*)message;
 
         std::string log = std::string(msg->m_sender->m_name) + ": " + msg->m_message;
-        g_program->GetAPI()->GetServerManagement()->SendConsoleMessage(log);
+        if (g_program->m_server->m_onlineMode)
+        {
+            g_program->GetAPI()->GetServerManagement()->SendConsoleMessage(log);
+        }
     }
     else if (name == "ServerPeerInitializedMessage")
     {
@@ -577,6 +584,10 @@ void GameSimulationInitDedicatedServerHk(void* inst, void* createInfo)
     if (g_program->m_server->m_onlineMode)
     {
         g_program->m_server->Register();
+    }
+    else
+    {
+        g_program->m_server->m_serverId = "lan:" + std::to_string(GetCurrentProcessId());
     }
 
     g_program->m_server->m_socketSpawnInfo = SocketSpawnInfo(false, "", g_program->m_server->m_serverId, "");

@@ -29,6 +29,7 @@ struct ServerCreationInfo
     std::string level;
     std::string mode;
     int maxPlayers;
+    bool lanOnly = false;
 
     // Commands executed on server load
     std::vector<std::string> loadCommands;
@@ -87,6 +88,8 @@ public:
     void Stop();
 
     void Heartbeat(const UpdateParameters& params);
+    void PollLanDiscovery();
+    void CloseLanDiscovery();
     void Register(bool force = false);
 
     void OnEvent(const Event& event) override;
@@ -121,6 +124,8 @@ public:
     std::optional<ServerCreationInfo> m_creationInfo;
     std::string m_serverId;
     bool m_onlineMode;
+    uintptr_t m_lanSocket = ~uintptr_t(0);
+    uint64_t m_lanNextResponse = 0;
 
     // This means the server is running in Client-As-Server.
     // This isn't true if this is a dedicated server, use Program::m_isDedicatedServer.

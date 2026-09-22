@@ -50,9 +50,17 @@ class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
   @override
   void initState() {
     SchedulerBinding.instance.addPostFrameCallback((_) async {
-      final available = await ModuleVersionService().updateAvailable(
-        module: VersionModule.module,
-      );
+      final lanOnly =
+          LanMode.enabled ||
+          (widget.initializeRequest?.startServer.lanOnly ?? false) ||
+          widget.initializeRequest != null &&
+              widget.initializeRequest!.hasJoinServer() &&
+              !widget.initializeRequest!.joinServer.hasId();
+      final available =
+          !lanOnly &&
+          await ModuleVersionService().updateAvailable(
+            module: VersionModule.module,
+          );
       if (available) {
         try {
           setState(() => updating = true);
@@ -91,7 +99,7 @@ class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
       }
 
       final req = widget.initializeRequest ?? .new();
-      if (Preferences.general.enabledPreloadMods) {
+      if (!lanOnly && Preferences.general.enabledPreloadMods) {
         setState(() => preloadingMods = true);
         final preloadedMods = await PreloadedModsHelper.preloadMods();
         if (!mounted) {
@@ -102,17 +110,13 @@ class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
           mods: req.modData.mods,
           explodedMods: req.modData.explodedMods,
           basePath: req.modData.basePath,
-          modPaths: [
-            ...req.modData.modPaths,
-            ...preloadedMods,
-          ],
+          modPaths: [...req.modData.modPaths, ...preloadedMods],
         );
       }
 
-      await checkService();
       await MaximaHelper.startGame(
             gameDataPath: widget.gameDataDir,
-            initializeRequest: widget.initializeRequest,
+            initializeRequest: req,
             mods: widget.mods,
           )
           .then((value) async {
@@ -255,9 +259,7 @@ class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
                 width: 15,
                 child: RepaintBoundary(child: ProgressRing()),
               ),
-              const SizedBox(
-                width: 15,
-              ),
+              const SizedBox(width: 15),
               if (updating)
                 Text(
                   'Updating Kyber Module...',
@@ -270,22 +272,14 @@ class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
                 ),
             ],
           ),
-          const SizedBox(
-            height: 10,
-          ),
+          const SizedBox(height: 10),
           Text(
             'Please wait while the game is starting. This may take a few seconds.',
-            style: FluentTheme.of(context).typography.body?.copyWith(
-              color: kWhiteColor,
-            ),
+            style: FluentTheme.of(context).typography.body
+                ?.copyWith(color: kWhiteColor),
           ),
-          const SizedBox(
-            height: 10,
-          ),
-          Text(
-            lastEvent ?? '',
-            style: FluentTheme.of(context).typography.body,
-          ),
+          const SizedBox(height: 10),
+          Text(lastEvent ?? '', style: FluentTheme.of(context).typography.body),
         ],
       ),
     );

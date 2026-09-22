@@ -146,6 +146,8 @@ message StartServerRequest {
   string description = 4;
   uint32 maxPlayers = 5;
   bool proximityChat = 6;
+  // Host locally without registration, proxies or Kyber authentication.
+  bool lanOnly = 7;
 }
 
 message LoadLevelRequest {

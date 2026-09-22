@@ -6,7 +6,8 @@ import 'package:kyber_launcher/core/config/colors.dart';
 import 'package:kyber_launcher/features/kyber/providers/kyber_api_status_cubit.dart';
 import 'package:kyber_launcher/features/lightswitch/models/status.dart';
 import 'package:kyber_launcher/features/navigation_bar/widgets/action_bar.dart';
-import 'package:kyber_launcher/features/navigation_bar/widgets/title_bar.dart' as kl;
+import 'package:kyber_launcher/features/navigation_bar/widgets/title_bar.dart'
+    as kl;
 import 'package:kyber_launcher/gen/fonts.gen.dart';
 import 'package:kyber_launcher/shared/ui/utils/background_blur.dart';
 
@@ -114,22 +115,17 @@ class _ApiStatusBoxState extends State<ApiStatusBox> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const SizedBox(
-                                height: 10,
-                              ),
+                              const SizedBox(height: 10),
                               Flexible(
                                 child: Text(
-                                  state.message ??
-                                      'KYBER is currently down for maintenance.',
+                                  state.message ?? 'KYBER is currently down for maintenance.',
                                   style: const TextStyle(
                                     fontFamily: FontFamily.battlefrontUI,
                                     fontSize: 18,
                                   ),
                                 ),
                               ),
-                              const SizedBox(
-                                height: 5,
-                              ),
+                              const SizedBox(height: 5),
                               Text(
                                 text ?? 'Next refresh in 0 seconds',
                                 style: const TextStyle(
@@ -140,6 +136,12 @@ class _ApiStatusBoxState extends State<ApiStatusBox> {
                             ],
                           );
                         },
+                      ),
+                      const SizedBox(height: 12),
+                      Button(
+                        child: const Text('Continue in LAN mode'),
+                        onPressed: () =>
+                            context.read<LightswitchCubit>().enableLanMode(),
                       ),
                     ],
                   ),

@@ -52,10 +52,12 @@ class _ServerHostState extends State<ServerHost> {
           previous is KyberStatusHosting && current is! KyberStatusHosting,
       listener: (context, state) {
         if (state is KyberStatusHosting) {
-          Logger(
-            'server_host',
-          ).info('Detected hosting status (${state.serverState.id})');
+          Logger('server_host')
+              .info('Detected hosting status (${state.serverState.id})');
           setState(() => createServer = false);
+          if (state.serverState.id.startsWith('lan:')) {
+            return;
+          }
           context.read<ModerationCubit>().selectServer(
             serverId: state.serverState.id,
           );
@@ -68,10 +70,9 @@ class _ServerHostState extends State<ServerHost> {
           Expanded(
             flex: 6,
             child: BorderedContent(
-              overlappingBorder: !createServer &&! context
-                  .watch<ModerationCubit>()
-                  .state
-                  .selected,
+              overlappingBorder:
+                  !createServer &&
+                  !context.watch<ModerationCubit>().state.selected,
               header: BlocBuilder<ModerationCubit, ModerationServerState>(
                 builder: (context, state) {
                   return Row(
@@ -118,15 +119,10 @@ class _ServerHostState extends State<ServerHost> {
                         SizedBox(
                           width: 250,
                           child: KyberTabBar(
-                            tabs: const [
-                              Text('MODERATE'),
-                              Text('MANAGE'),
-                            ],
+                            tabs: const [Text('MODERATE'), Text('MANAGE')],
                             onChanged: (selectedIndex) {
                               context.read<HostSearchCubit>().clear();
-                              setState(
-                                () => _currentPage = selectedIndex,
-                              );
+                              setState(() => _currentPage = selectedIndex);
                             },
                             selectedIndex: _currentPage,
                           ),
@@ -137,15 +133,10 @@ class _ServerHostState extends State<ServerHost> {
                         SizedBox(
                           width: 250,
                           child: KyberTabBar(
-                            tabs: const [
-                              Text('ROTATION'),
-                              Text('MODS'),
-                            ],
+                            tabs: const [Text('ROTATION'), Text('MODS')],
                             onChanged: (selectedIndex) {
                               context.read<HostSearchCubit>().clear();
-                              setState(
-                                () => _currentPage = selectedIndex,
-                              );
+                              setState(() => _currentPage = selectedIndex);
                               if (selectedIndex == 2) {
                                 context
                                     .read<ModerationServersCubit>()
@@ -185,14 +176,10 @@ class _ServerHostState extends State<ServerHost> {
                                   ? context
                                         .read<ModerationCubit>()
                                         .unloadServer()
-                                  : setState(
-                                      () => createServer = false,
-                                    );
+                                  : setState(() => createServer = false);
                             },
                             selectedIndex: -1,
-                            tabs: const [
-                              Icon(mt.Icons.close),
-                            ],
+                            tabs: const [Icon(mt.Icons.close)],
                           ),
                         ),
                       ],
@@ -210,9 +197,7 @@ class _ServerHostState extends State<ServerHost> {
                   }
 
                   if (state.selected) {
-                    return ServerModeration(
-                      selectedPage: _currentPage,
-                    );
+                    return ServerModeration(selectedPage: _currentPage);
                   }
 
                   return const ModerationServerList();

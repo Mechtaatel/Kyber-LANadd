@@ -1,4 +1,5 @@
 Packages/kyber/lib/gen
+.dart_tool/
 CLI/lib/src/version.dart
 
 pubspec.lock

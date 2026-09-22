@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:kyber/kyber.dart';
 import 'package:kyber_launcher/core/services/app_settings.dart';
 import 'package:kyber_launcher/core/services/module_version_service.dart';
 import 'package:kyber_launcher/core/services/notification_service.dart';
@@ -63,7 +64,7 @@ class AppInitializationService {
       }),
     );
 
-    if (context.mounted) {
+    if (context.mounted && !LanMode.enabled) {
       context.read<MaximaRtmCubit>().startPresenceStream();
       context
         ..read<StatsCubit>()
@@ -73,7 +74,7 @@ class AppInitializationService {
     await ProtocolHelper.initialize();
 
     await _checkCompatibilityMode(context);
-    await _checkForUpdates(context);
+    if (!LanMode.enabled) await _checkForUpdates(context);
     await showOpenBetaDialog(context);
     await showRulesDialog(context);
     await _showPlatformWarnings();
@@ -119,8 +120,7 @@ class AppInitializationService {
     if (!isVcRuntimeInstalled) {
       NotificationService.error(
         title: 'Visual C++ Runtime not installed',
-        message:
-            'Please install the Visual C++ Redistributable for Visual Studio 2015, 2017 and 2019',
+        message: 'Please install the Visual C++ Redistributable for Visual Studio 2015, 2017 and 2019',
       );
     }
   }

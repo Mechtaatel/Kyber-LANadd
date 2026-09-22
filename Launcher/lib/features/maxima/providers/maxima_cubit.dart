@@ -61,11 +61,7 @@ class MaximaCubit extends Cubit<MaximaState> {
         Empty(),
       );
       if (response.hasDiscord()) {
-        emit(
-          state.copyWith(
-            discordData: response.discord,
-          ),
-        );
+        emit(state.copyWith(discordData: response.discord));
       }
     } on GrpcError catch (e) {
       if (e.code == StatusCode.unauthenticated) {
@@ -227,31 +223,37 @@ class MaximaCubit extends Cubit<MaximaState> {
     );
   }
 
-  Future<void> requestLogin({bool skipMaximaCheck = false}) async {
+  Future<void> requestLogin({
+    bool skipMaximaCheck = false,
+    bool? lanOnly,
+  }) async {
     if (_loggingIn) {
       return Future.error('Already logging in');
     }
 
-    final cubit = navigatorKey.currentContext!.read<LightswitchCubit>();
-    late LightswitchStatus status;
-    if (!cubit.firstRequestCompleter.isCompleted) {
-      status = await cubit.firstRequestCompleter.future;
-    } else {
-      status = cubit.state;
-    }
+    if (lanOnly != null) LanMode.enabled = lanOnly;
+    if (!LanMode.enabled) {
+      final cubit = navigatorKey.currentContext!.read<LightswitchCubit>();
+      late LightswitchStatus status;
+      if (!cubit.firstRequestCompleter.isCompleted) {
+        status = await cubit.firstRequestCompleter.future;
+      } else {
+        status = cubit.state;
+      }
 
-    if (status.status == KyberStatusEnum.down) {
-      _updateTimer?.cancel();
+      if (status.status == KyberStatusEnum.down) {
+        _updateTimer?.cancel();
 
-      logger.severe('Kyber is down... Skipping login');
+        logger.severe('Kyber is down... Skipping login');
 
-      return emit(
-        MaximaState(
-          status: .error,
-          error: 'KyberDown',
-          servicePlayer: state.servicePlayer,
-        ),
-      );
+        return emit(
+          MaximaState(
+            status: .error,
+            error: 'KyberDown',
+            servicePlayer: state.servicePlayer,
+          ),
+        );
+      }
     }
 
     if (state.status != .loaded && !skipMaximaCheck) {
@@ -300,6 +302,20 @@ class MaximaCubit extends Cubit<MaximaState> {
           ),
         );
 
+        return;
+      }
+
+      if (LanMode.enabled) {
+        _updateTimer?.cancel();
+        ProcessEnv.set('KYBER_LAN_ONLY', '1');
+        ProcessEnv.delete('KYBER_API_TOKEN');
+        emit(
+          MaximaState(
+            loggedIn: true,
+            servicePlayer: servicePlayer,
+            status: MaximaStatus.loaded,
+          ),
+        );
         return;
       }
 
@@ -356,13 +372,10 @@ class MaximaCubit extends Cubit<MaximaState> {
         sl.registerSingleton<SearchService>(SearchService(eaToken: authToken));
       }
 
-      _updateTimer ??= Timer.periodic(
-          const Duration(minutes: 5),
-          (_) async {
-            logger.info('Validating session...');
-            await verifyToken();
-          },
-        );
+      _updateTimer ??= Timer.periodic(const Duration(minutes: 5), (_) async {
+        logger.info('Validating session...');
+        await verifyToken();
+      });
 
       return;
     } catch (e, s) {
@@ -436,9 +449,8 @@ class MaximaCubit extends Cubit<MaximaState> {
 
     if (!Directory('.cache').existsSync()) {
       logger.info('Downloading maxima');
-      Directory(
-        '.cache/maxima/maxima-x86_64-win64/',
-      ).createSync(recursive: true);
+      Directory('.cache/maxima/maxima-x86_64-win64/')
+          .createSync(recursive: true);
       await Dio().download(
         'https://s3.kyber.gg/artifacts/maxima-win64.zip',
         '.cache/maxima.zip',
@@ -451,21 +463,17 @@ class MaximaCubit extends Cubit<MaximaState> {
       File('.cache/maxima.zip').deleteSync();
     }
 
-    if (!File(
-      'build/windows/x64/runner/Debug/maxima-bootstrap.exe',
-    ).existsSync()) {
-      await File(
-        '.cache/maxima/maxima-x86_64-win64/maxima-bootstrap.exe',
-      ).copy('build/windows/x64/runner/Debug/maxima-bootstrap.exe');
+    if (!File('build/windows/x64/runner/Debug/maxima-bootstrap.exe')
+        .existsSync()) {
+      await File('.cache/maxima/maxima-x86_64-win64/maxima-bootstrap.exe')
+          .copy('build/windows/x64/runner/Debug/maxima-bootstrap.exe');
     }
 
     if (Platform.isWindows) {
-      if (!File(
-        'build/windows/x64/runner/Debug/maxima-service.exe',
-      ).existsSync()) {
-        await File(
-          '.cache/maxima/maxima-x86_64-win64/maxima-service.exe',
-        ).copy('build/windows/x64/runner/Debug/maxima-service.exe');
+      if (!File('build/windows/x64/runner/Debug/maxima-service.exe')
+          .existsSync()) {
+        await File('.cache/maxima/maxima-x86_64-win64/maxima-service.exe')
+            .copy('build/windows/x64/runner/Debug/maxima-service.exe');
       }
     }
   }

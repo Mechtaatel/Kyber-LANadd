@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:kyber/kyber.dart';
 import 'package:kyber_collection/kyber_collection.dart';
 import 'package:kyber_launcher/features/kyber/helper/kyber_status_helper.dart';
 import 'package:kyber_launcher/features/lightswitch/models/status.dart';
@@ -22,13 +23,14 @@ class LightswitchCubit extends Cubit<LightswitchStatus> {
 
   LightswitchCubit() : super(LightswitchStatus.defaultStatus()) {
     _refresh();
-    _refreshTimer = .periodic(
-      const .new(minutes: 1),
-      (_) async => _refresh(),
-    );
+    _refreshTimer = .periodic(const .new(minutes: 1), (_) async => _refresh());
   }
 
   Future<void> _refresh() async {
+    if (LanMode.enabled) {
+      enableLanMode();
+      return;
+    }
     _nextRefresh = DateTime.now().add(const .new(minutes: 1));
     late LightswitchStatus status;
 
@@ -100,6 +102,10 @@ class LightswitchCubit extends Cubit<LightswitchStatus> {
       status.status = .up;
     }
 
+    if (LanMode.enabled) {
+      enableLanMode();
+      return;
+    }
     emit(status);
 
     if (!_firstRequestCompleter.isCompleted) {
@@ -111,5 +117,18 @@ class LightswitchCubit extends Cubit<LightswitchStatus> {
   Future<void> close() async {
     _refreshTimer?.cancel();
     await super.close();
+  }
+
+  void enableLanMode() {
+    LanMode.enabled = true;
+    final status = LightswitchStatus(
+      defaultEnvironment: 'prod',
+      environments: [],
+      status: KyberStatusEnum.up,
+      message: 'LAN mode',
+    );
+    if (!_firstRequestCompleter.isCompleted)
+      _firstRequestCompleter.complete(status);
+    emit(status);
   }
 }

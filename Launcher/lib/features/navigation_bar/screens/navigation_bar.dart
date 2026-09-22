@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:kyber/kyber.dart' show LanMode;
 import 'package:kyber_launcher/core/routing/app_router.dart';
 import 'package:kyber_launcher/core/services/notification_service.dart';
 import 'package:kyber_launcher/features/download_manager/models/download_request.dart';
@@ -126,7 +127,7 @@ class _NavigationBarState extends State<NavigationBar>
       listenWhen: (prev, state) =>
           prev.status == .down && state.status != .down,
       builder: (context, apiState) {
-        if (apiState.status == .down) {
+        if (apiState.status == .down && !LanMode.enabled) {
           return const ApiStatusBox();
         }
 

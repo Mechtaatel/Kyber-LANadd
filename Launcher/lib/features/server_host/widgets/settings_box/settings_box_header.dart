@@ -111,9 +111,7 @@ class SettingsBoxHeader extends StatelessWidget {
           sl
               .get<KyberGRPCService>()
               .serverBrowserClient
-              .uploadModImages(
-                UploadModImagesRequest(images: create),
-              )
+              .uploadModImages(UploadModImagesRequest(images: create))
               .then((_) => Navigator.of(context).pop());
 
           return KyberContentDialog(
@@ -124,30 +122,19 @@ class SettingsBoxHeader extends StatelessWidget {
                 const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    SizedBox(
-                      height: 15,
-                      width: 15,
-                      child: ProgressRing(),
-                    ),
-                    SizedBox(
-                      width: 15,
-                    ),
+                    SizedBox(height: 15, width: 15, child: ProgressRing()),
+                    SizedBox(width: 15),
                     Text(
                       'Uploading map images...',
-                      style: TextStyle(
-                        fontSize: 17,
-                      ),
+                      style: TextStyle(fontSize: 17),
                     ),
                   ],
                 ),
-                const SizedBox(
-                  height: 10,
-                ),
+                const SizedBox(height: 10),
                 Text(
                   'Please wait while ${missingHashes.length} map images are uploaded. This may take a few seconds.',
-                  style: FluentTheme.of(context).typography.body?.copyWith(
-                    color: kWhiteColor,
-                  ),
+                  style: FluentTheme.of(context).typography.body
+                      ?.copyWith(color: kWhiteColor),
                 ),
               ],
             ),
@@ -187,9 +174,7 @@ class SettingsBoxHeader extends StatelessWidget {
               );
             },
           ),
-          const SizedBox(
-            height: 10,
-          ),
+          const SizedBox(height: 10),
 
           //FractionallySizedBox(
           //  widthFactor: 0.8,
@@ -198,9 +183,7 @@ class SettingsBoxHeader extends StatelessWidget {
           //    placeholder: Localization.current.hostServerTagsPlaceholder,
           //  ),
           //),
-          const SizedBox(
-            height: 30,
-          ),
+          const SizedBox(height: 30),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -241,40 +224,54 @@ class SettingsBoxHeader extends StatelessWidget {
                             return;
                           }
 
-                          await uploadHashes(context);
+                          final lanOnly =
+                              form.value['lanOnly'] as bool? ?? true;
+                          if (!lanOnly && LanMode.enabled) {
+                            NotificationService.error(
+                              message: 'Sign in to Kyber in online mode to host a public server.',
+                            );
+                            return;
+                          }
+                          if (lanOnly &&
+                              (form.value['password'] as String? ?? '')
+                                  .isNotEmpty) {
+                            NotificationService.error(
+                              message: 'LAN-only servers do not support passwords yet. Clear the password to host on your trusted LAN.',
+                            );
+                            return;
+                          }
+                          if (!lanOnly) await uploadHashes(context);
 
                           final mapRotation = context
                               .read<MapRotationCubit>()
                               .state
                               .maps
-                              .map(
-                                (e) {
-                                  return LevelSetup(
-                                    map: e.map,
-                                    mode: e.mode,
-                                    mapName: sl
-                                        .get<LevelDeclarationService>()
-                                        .getMapByMode(
-                                          map: e.map,
-                                          mode: e.mode,
-                                          collection: context
-                                              .read<HostCollectionCubit>()
-                                              .state
-                                              .selectedModCollection,
-                                        )
-                                        ?.name,
-                                    modeName: sl
-                                        .get<LevelDeclarationService>()
-                                        .getModeName(
-                                          mode: e.mode,
-                                          collection: context
-                                              .read<HostCollectionCubit>()
-                                              .state
-                                              .selectedModCollection,
-                                        ),
-                                  );
-                                },
-                              )
+                              .map((e) {
+                                return LevelSetup(
+                                  map: e.map,
+                                  mode: e.mode,
+                                  mapName: sl
+                                      .get<LevelDeclarationService>()
+                                      .getMapByMode(
+                                        map: e.map,
+                                        mode: e.mode,
+                                        collection: context
+                                            .read<HostCollectionCubit>()
+                                            .state
+                                            .selectedModCollection,
+                                      )
+                                      ?.name,
+                                  modeName: sl
+                                      .get<LevelDeclarationService>()
+                                      .getModeName(
+                                        mode: e.mode,
+                                        collection: context
+                                            .read<HostCollectionCubit>()
+                                            .state
+                                            .selectedModCollection,
+                                      ),
+                                );
+                              })
                               .toList();
                           final collection = context
                               .read<HostCollectionCubit>()
@@ -283,14 +280,14 @@ class SettingsBoxHeader extends StatelessWidget {
 
                           if (mapRotation.isEmpty) {
                             NotificationService.error(
-                              message:
-                                  'You need to add at least one map to the map rotation',
+                              message: 'You need to add at least one map to the map rotation',
                             );
                             return;
                           }
 
                           try {
                             final startRequest = StartServerRequest(
+                              lanOnly: lanOnly,
                               name: form.value['serverName'] as String,
                               description: form.value['description'] as String?,
                               password: form.value['password'] as String?,
@@ -298,21 +295,22 @@ class SettingsBoxHeader extends StatelessWidget {
                               mapRotation: mapRotation,
                             );
 
-                            await sl
-                                .get<KyberGRPCService>()
-                                .serverBrowserClient
-                                .validateServer(
-                                  RegisterServerRequest(
-                                    name: startRequest.name,
-                                    description: startRequest.description,
-                                    password: startRequest.password,
-                                    maxPlayerCount: startRequest.maxPlayers,
-                                    explodedMods: [],
-                                    mods: [],
-                                    levelSetup: LevelSetup(map: '', mode: ''),
-                                    statsSource: .KYBER,
-                                  ),
-                                );
+                            if (!lanOnly)
+                              await sl
+                                  .get<KyberGRPCService>()
+                                  .serverBrowserClient
+                                  .validateServer(
+                                    RegisterServerRequest(
+                                      name: startRequest.name,
+                                      description: startRequest.description,
+                                      password: startRequest.password,
+                                      maxPlayerCount: startRequest.maxPlayers,
+                                      explodedMods: [],
+                                      mods: [],
+                                      levelSetup: LevelSetup(map: '', mode: ''),
+                                      statsSource: .KYBER,
+                                    ),
+                                  );
 
                             final initialCommands = <String>[];
 
@@ -332,10 +330,16 @@ class SettingsBoxHeader extends StatelessWidget {
                             }
 
                             if (sl.isRegistered<MaximaGameInstance>()) {
+                              if (sl.get<MaximaGameInstance>().lanOnly !=
+                                  lanOnly) {
+                                NotificationService.error(
+                                  message: 'Restart the game to switch between LAN-only and online hosting.',
+                                );
+                                return;
+                              }
                               if (initialCommands.isNotEmpty) {
                                 NotificationService.showNotification(
-                                  message:
-                                      'Friendly Fire and Health Regeneration can only be set when no game is running',
+                                  message: 'Friendly Fire and Health Regeneration can only be set when no game is running',
                                   severity: InfoBarSeverity.error,
                                 );
                               }
@@ -380,8 +384,7 @@ class SettingsBoxHeader extends StatelessWidget {
                               stack,
                             );
                             NotificationService.error(
-                              message:
-                                  'An unexpected error occurred while starting the server',
+                              message: 'An unexpected error occurred while starting the server',
                             );
                           }
                         },

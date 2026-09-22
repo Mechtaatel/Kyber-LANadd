@@ -19,9 +19,5 @@ public:
     void Load(const eastl::string& modName, bb::ByteBuffer& buf, LocalizationMergeData* data) override;
     bool Modify(CustomAssetHandlerContext& ctx, DataContainer* container, LocalizationMergeData* data) override;
 
-private:
-    std::vector<wchar_t> ModifyHistogram(uint8_t** histogramData);
-    std::vector<uint8_t> ModifyChunk(
-        uint8_t* chunkData, uint32_t chunkSize, LocalizationMergeData* data, const std::vector<wchar_t>& values);
 };
 } // namespace Kyber

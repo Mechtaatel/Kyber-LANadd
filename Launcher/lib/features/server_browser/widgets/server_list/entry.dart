@@ -95,10 +95,7 @@ class ServerListEntry extends StatelessWidget {
           top: index == 0
               ? BorderSide(color: hovered ? kActiveColor : decoColor, width: 2)
               : BorderSide.none,
-          left: BorderSide(
-            color: hovered ? kActiveColor : decoColor,
-            width: 2,
-          ),
+          left: BorderSide(color: hovered ? kActiveColor : decoColor, width: 2),
           right: BorderSide(
             color: hovered ? kActiveColor : decoColor,
             width: 2,
@@ -164,14 +161,13 @@ class ServerListEntry extends StatelessWidget {
                             );
                           }
 
-                          return MapHelper.getImageForMap(
-                            map['map'] as String,
-                          )!.image(
-                            fit: BoxFit.cover,
-                            alignment: Alignment.centerLeft,
-                            colorBlendMode: BlendMode.darken,
-                            color: Colors.black.withOpacity(.12),
-                          );
+                          return MapHelper.getImageForMap(map['map'] as String)!
+                              .image(
+                                fit: BoxFit.cover,
+                                alignment: Alignment.centerLeft,
+                                colorBlendMode: BlendMode.darken,
+                                color: Colors.black.withOpacity(.12),
+                              );
                         },
                       ),
                     ),
@@ -219,9 +215,7 @@ class ServerListEntry extends StatelessWidget {
 
                               return Text(
                                 '${serverInfo.playerCount}/${serverInfo.maxPlayerCount}',
-                                style: const .new(
-                                  fontSize: 15,
-                                ),
+                                style: const .new(fontSize: 15),
                                 textAlign: TextAlign.center,
                               );
                             },
@@ -272,11 +266,7 @@ class _JoinButtonState extends State<_JoinButton> {
       width: 70,
       alignment: Alignment.center,
       decoration: const BoxDecoration(
-        border: Border(
-          left: BorderSide(
-            color: decoColor,
-          ),
-        ),
+        border: Border(left: BorderSide(color: decoColor)),
       ),
       child: Builder(
         builder: (context) {
@@ -334,19 +324,13 @@ class _TableServerName extends StatelessWidget {
                 final mods = server.mods;
                 if (mods.length == 1) {
                   if (mods.first.name == 'Battlefront Plus') {
-                    return Assets.icons.kblBattlefrontPlusIcon.svg(
-                      height: 15,
-                    );
+                    return Assets.icons.kblBattlefrontPlusIcon.svg(height: 15);
                   } else if (mods.first.name ==
                       'Vanilla Plus - Curated Mod Pack for KYBER V2') {
-                    return Assets.icons.kblVanillaPlusIcon.svg(
-                      height: 15,
-                    );
+                    return Assets.icons.kblVanillaPlusIcon.svg(height: 15);
                   }
                 }
-                return Assets.icons.kyberLogo.svg(
-                  height: 15,
-                );
+                return Assets.icons.kyberLogo.svg(height: 15);
               },
             ),
           ),
@@ -355,10 +339,7 @@ class _TableServerName extends StatelessWidget {
         ))
           Padding(
             padding: const EdgeInsets.only(right: 4, top: 2, bottom: 4),
-            child: Assets.icons.kblLink.svg(
-              color: kWhiteColor,
-              height: 15,
-            ),
+            child: Assets.icons.kblLink.svg(color: kWhiteColor, height: 15),
           ),
         Flexible(
           child: AutoSizeText(
@@ -414,6 +395,7 @@ class _ServerInfoBar extends StatelessWidget {
             ),
             const _Divider(),
           ],
+          if (server.isLan) ...[const Text('LAN'), const _Divider()],
           Text(
             server.levelSetup.modeName.isNotEmpty
                 ? server.levelSetup.modeName.toUpperCase()

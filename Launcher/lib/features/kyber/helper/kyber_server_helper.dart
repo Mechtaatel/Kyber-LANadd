@@ -26,6 +26,13 @@ class KyberServerHelper {
     bool? spectator,
     String? password,
   }) async {
+    if (sl.isRegistered<MaximaGameInstance>() &&
+        sl.get<MaximaGameInstance>().lanOnly != server.isLanOnly) {
+      NotificationService.error(
+        message: 'Restart the game to switch between LAN-only and online play.',
+      );
+      return;
+    }
     final localMods = sl.get<ModService>().mods;
     final mods = server.mods.map((e) {
       final matches = localMods
@@ -71,58 +78,63 @@ class KyberServerHelper {
     );
 
     var serverIp = server.ip;
-    final currentIp = await KyberNetworkHelper.getCurrentIpAddress();
+    final currentIp = server.isLan
+        ? null
+        : await KyberNetworkHelper.getCurrentIpAddress();
     if (serverIp == currentIp) {
       serverIp = '127.0.0.1';
     }
 
-    final proxyCubit = navigatorKey.currentContext!.read<KyberProxyCubit>();
-    if (proxyCubit.isLoading) {
-      NotificationService.info(message: 'Waiting for proxies to load...');
-    }
-
-    await proxyCubit.ensureReady();
-    final proxies = proxyCubit.state.proxies;
-    var selectedProxy = proxies.firstWhereOrNull(
-      (p) => p.proxy.id == Preferences.general.proxy,
-    );
-    if (selectedProxy == null) {
-      selectedProxy = proxies.firstOrNull;
-      _logger.warning(
-        'No proxy selected, using ${selectedProxy?.proxy.name} instead',
-      );
-      if (selectedProxy == null) {
-        _logger.severe('No proxy available');
-        throw Exception('No proxy available');
+    var proxyIp = '';
+    if (server.requiresProxy) {
+      final proxyCubit = navigatorKey.currentContext!.read<KyberProxyCubit>();
+      if (proxyCubit.isLoading) {
+        NotificationService.info(message: 'Waiting for proxies to load...');
       }
 
-      NotificationService.showNotification(
-        message:
-            'Selected Proxy not available, using ${selectedProxy.proxy.name} instead',
-        severity: InfoBarSeverity.warning,
+      await proxyCubit.ensureReady();
+      final proxies = proxyCubit.state.proxies;
+      var selectedProxy = proxies.firstWhereOrNull(
+        (p) => p.proxy.id == Preferences.general.proxy,
       );
-    }
+      if (selectedProxy == null) {
+        selectedProxy = proxies.firstOrNull;
+        _logger.warning(
+          'No proxy selected, using ${selectedProxy?.proxy.name} instead',
+        );
+        if (selectedProxy == null) {
+          _logger.severe('No proxy available');
+          throw Exception('No proxy available');
+        }
 
-    _logger.info(
-      'Joining server with proxy ${selectedProxy.proxy.name} (${selectedProxy.proxy.ip})',
-    );
+        NotificationService.showNotification(
+          message:
+              'Selected Proxy not available, using ${selectedProxy.proxy.name} instead',
+          severity: InfoBarSeverity.warning,
+        );
+      }
+
+      _logger.info(
+        'Joining server with proxy ${selectedProxy.proxy.name} (${selectedProxy.proxy.ip})',
+      );
+      proxyIp = selectedProxy.proxy.ip;
+    }
 
     try {
       final service = sl.get<KyberGRPCService>();
-      final joinToken = await service.clientServerClient.createJoinToken(
-        .new(
-          server: server.id,
-          password: password,
-        ),
-      );
+      final joinToken = server.isLanOnly
+          ? null
+          : await service.clientServerClient.createJoinToken(
+              .new(server: server.id, password: password),
+            );
 
       final joinRequest = JoinServerRequest(
-        id: server.id,
-        ip: server.requiresProxy ? selectedProxy.proxy.ip : serverIp,
+        id: server.isLanOnly ? null : server.id,
+        ip: server.requiresProxy ? proxyIp : serverIp,
         port: server.requiresProxy ? null : server.port,
         type: server.requiresProxy ? .PROXIED : .DIRECT,
         spectate: spectator ?? false,
-        joinToken: joinToken.token,
+        joinToken: joinToken?.token,
       );
 
       if (!sl.isRegistered<MaximaGameInstance>()) {
@@ -138,20 +150,14 @@ class KyberServerHelper {
         );
       } else {
         final instance = sl.get<MaximaGameInstance>();
-        await instance.clientService.client.joinServer(
-          joinRequest,
-        );
+        await instance.clientService.client.joinServer(joinRequest);
       }
     } on GrpcError catch (e) {
       _logger.severe('Failed to join server: ${e.message}', e);
-      NotificationService.error(
-        message: 'Failed to join server: ${e.message}',
-      );
+      NotificationService.error(message: 'Failed to join server: ${e.message}');
     } catch (e) {
       _logger.severe('Failed to join server: $e', e);
-      NotificationService.error(
-        message: 'Failed to join server: $e',
-      );
+      NotificationService.error(message: 'Failed to join server: $e');
     }
   }
 }

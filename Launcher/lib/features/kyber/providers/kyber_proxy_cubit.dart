@@ -39,6 +39,7 @@ class KyberProxyCubit extends Cubit<KyberProxyState> {
   }
 
   Future<void> _loadProxies() async {
+    if (LanMode.enabled) return;
     try {
       final resp = await sl.get<KyberGRPCService>().proxyClient.getList(
         Empty(),
@@ -96,10 +97,7 @@ class KyberProxyCubit extends Cubit<KyberProxyState> {
           proxies.map((r) => KyberProxy(ping: r.ping!, proxy: r.info)).toList()
             ..insert(0, KyberProxy(ping: best.ping!, proxy: autoInfo));
 
-      final validIds = {
-        ...proxyList.map((e) => e.id),
-        'auto',
-      };
+      final validIds = {...proxyList.map((e) => e.id), 'auto'};
 
       final selected = _validatedSelection(validIds, Preferences.general.proxy);
       emit(state.copyWith(proxies: entries, selectedProxy: selected));

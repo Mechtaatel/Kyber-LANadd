@@ -419,7 +419,7 @@ class _CollectionBoxState extends State<CollectionBox> {
                   ),
                   const CardSection(),
                   Expanded(
-                    child: ReorderableListView.builder(
+                    child: mt.ReorderableListView.builder(
                       buildDefaultDragHandles: state.editing,
                       onReorderStart: (index) {
                         setState(() {

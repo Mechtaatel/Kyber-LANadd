@@ -41,6 +41,7 @@ void Client::HandleClientServerJoin(NetworkCreatePlayerMessage* message)
 
     if (!g_program->m_server->m_onlineMode)
     {
+        message->isSpectator = m_spectator;
         return;
     }
 
@@ -77,6 +78,7 @@ void Client::AttemptJoinVoip()
 
 void Client::JoinServer(const std::string& id, std::string ip, uint16_t port, bool spectate, bool proxied, bool changeState)
 {
+    g_program->m_server->m_onlineMode = !id.empty();
     if (!id.empty())
     {
         auto server = g_program->GetAPI()->GetServerBrowser()->GetServer(id);
@@ -88,7 +90,7 @@ void Client::JoinServer(const std::string& id, std::string ip, uint16_t port, bo
 
         auto meta = server->meta();
         auto proxy_id_it = meta.find("pinned_proxy_id");
-        if (proxy_id_it != meta.end())
+        if (proxied && proxy_id_it != meta.end())
         {
             auto proxies = g_program->GetAPI()->GetProxy()->GetList();
             for (const auto& proxy : proxies)
@@ -106,7 +108,7 @@ void Client::JoinServer(const std::string& id, std::string ip, uint16_t port, bo
     ClientSettings* clientSettings = Settings<ClientSettings>("Client");
     clientSettings->ServerIp = StringUtils::CopyWithArena(ip);
 
-    SocketSpawnInfo info(proxied, proxied ? ip : "", id, "");
+    SocketSpawnInfo info(proxied, proxied ? ip : "", id.empty() ? "lan:" + ip + ":" + std::to_string(port) : id, "");
     g_program->m_server->m_socketSpawnInfo = info;
     m_joining = true;
     m_spectator = spectate;

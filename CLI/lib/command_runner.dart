@@ -103,6 +103,10 @@ class KyberCliCommandRunner extends CompletionCommandRunner<int> {
       });
 
       final apiEnv = Platform.environment['KYBER_API_ENV'] ?? 'prod';
+      final lanOnly =
+          Platform.environment['KYBER_LAN_ONLY'] == '1' ||
+          topLevelResults.command?.name == 'start_server' &&
+              topLevelResults.command?['lan'] == true;
 
       const skipCommands = ['get_token', 'get_ea_token'];
       if (!skipCommands.contains(topLevelResults.command?.name)) {
@@ -114,7 +118,8 @@ class KyberCliCommandRunner extends CompletionCommandRunner<int> {
 
       if (topLevelResults.command != null &&
           !topLevelResults.arguments.contains('--help')) {
-        if (!topLevelResults.arguments.contains('--skip-updates') &&
+        if (!lanOnly &&
+            !topLevelResults.arguments.contains('--skip-updates') &&
             !Platform.isLinux &&
             [
               'start_server',

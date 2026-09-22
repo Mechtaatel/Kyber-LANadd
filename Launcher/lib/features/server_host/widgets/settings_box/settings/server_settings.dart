@@ -20,6 +20,17 @@ class ServerSettings extends StatelessWidget {
             itemStyle: const TextStyle(fontSize: 17),
             items: [
               KyberTableItem.custom(
+                title: 'LAN ONLY (NO KYBER SERVICES)',
+                builder: (hovered) => FormBuilderField<bool>(
+                  name: 'lanOnly',
+                  initialValue: false,
+                  builder: (field) => ToggleSwitch(
+                    checked: field.value ?? false,
+                    onChanged: field.didChange,
+                  ),
+                ),
+              ),
+              KyberTableItem.custom(
                 title: 'MAX PLAYERS',
                 builder: (hovered) {
                   return FormBuilderField<int>(
@@ -95,14 +106,12 @@ class ServerSettings extends StatelessWidget {
                     name: 'password',
                     isSensitive: true,
                     placeholder: 'EXAMPLE',
-                    validator: FormBuilderValidators.compose(
-                      [
-                        FormBuilderValidators.maxLength(
-                          25,
-                          checkNullOrEmpty: false,
-                        ),
-                      ],
-                    ),
+                    validator: FormBuilderValidators.compose([
+                      FormBuilderValidators.maxLength(
+                        25,
+                        checkNullOrEmpty: false,
+                      ),
+                    ]),
                   );
                 },
               ),

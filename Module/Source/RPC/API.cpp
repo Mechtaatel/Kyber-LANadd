@@ -77,7 +77,10 @@ API::API(std::string token)
     
     std::shared_ptr<Channel> channel = grpc::CreateChannel(rpcUri, credentials);
 
-    m_stateListenerThread = std::thread(ListenToStateChanges, channel);
+    if (PlatformUtils::GetEnv("KYBER_LAN_ONLY") != "1")
+    {
+        m_stateListenerThread = std::thread(ListenToStateChanges, channel);
+    }
 
     m_clientServer = std::make_unique<ClientServerAPI>(channel, &m_asyncManager, token);
     m_proxy = std::make_unique<ProxyAPI>(channel, token);

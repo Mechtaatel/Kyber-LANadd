@@ -11,12 +11,14 @@ class MaximaGameInstance {
     required this.clientService,
     this.mods = const [],
     this.voipSettings,
+    this.lanOnly = false,
   }) {
     _eventStreamController = StreamController<String>.broadcast();
   }
 
   int pid;
   bool isDedicated;
+  final bool lanOnly;
   ClientGRPCService clientService;
   List<FrostyMod> mods;
   VoipSettings? voipSettings;
@@ -49,6 +51,7 @@ class MaximaGameInstance {
     return MaximaGameInstance(
       pid: pid ?? this.pid,
       isDedicated: isDedicated ?? this.isDedicated,
+      lanOnly: lanOnly,
       clientService: clientService ?? this.clientService,
       mods: mods ?? this.mods,
       voipSettings: voipSettings ?? this.voipSettings,

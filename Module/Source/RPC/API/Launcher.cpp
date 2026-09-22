@@ -51,6 +51,13 @@ void LauncherInterface::Initialize() const
         info.name = server.name();
         info.description = server.description();
         info.password = server.password();
+        info.lanOnly = server.lanonly();
+        if (info.lanOnly && !info.password.empty())
+        {
+            KYBER_LOG(Error, "LAN-only servers do not support passwords yet");
+            return;
+        }
+        g_program->m_server->m_onlineMode = !info.lanOnly;
 
         auto entry = g_program->m_server->m_mapRotation.GetNextEntry();
         info.level = entry.level;

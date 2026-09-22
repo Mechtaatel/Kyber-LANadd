@@ -26,10 +26,7 @@ Server KyberDummyServer({
     maxPlayerCount: 40,
     playerCount: playerCount ?? Random().nextInt(40),
     name: title,
-    levelSetup: LevelSetup(
-      map: randomMap,
-      mode: x.mode,
-    ),
+    levelSetup: LevelSetup(map: randomMap, mode: x.mode),
     requiresPassword: requiredPassword ?? false,
     creator: creator ?? 'Unknown',
     mods: [
@@ -64,6 +61,10 @@ class ModerationServersCubit extends Cubit<ModerationServersState> {
   Timer? _updateTimer;
 
   Future<void> loadServers() async {
+    if (LanMode.enabled) {
+      emit(const ModerationServersLoaded([]));
+      return;
+    }
     emit(const ModerationServersLoading());
     try {
       final token = sl.get<KyberGRPCService>().token;
@@ -87,9 +88,7 @@ class ModerationServersCubit extends Cubit<ModerationServersState> {
         return emit(const ModerationServersLoaded([]));
       }
 
-      NotificationService.error(
-        message: 'Failed to load servers: $e',
-      );
+      NotificationService.error(message: 'Failed to load servers: $e');
 
       rethrow;
     }

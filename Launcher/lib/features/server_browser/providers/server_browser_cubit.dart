@@ -95,39 +95,37 @@ class ServerBrowserCubit extends Cubit<ServerBrowserState> {
 
       showKyberDialog<JoinDialogResult?>(
         context: navigatorKey.currentContext!,
-        builder: (context) => CosmeticModsDialog(
-          server: server,
-        ),
+        builder: (context) => CosmeticModsDialog(server: server),
       ).then(dialogCompleted.complete);
 
-      await sl
-          .get<KyberGRPCService>()
-          .serverBrowserClient
-          .getServer(ServerRequest(id: initialServerData.id))
-          .then((_) => null)
-          .onError((e, s) {
-            if (dialogCompleted.isCompleted) {
-              return;
-            }
+      if (!initialServerData.isLanOnly)
+        await sl
+            .get<KyberGRPCService>()
+            .serverBrowserClient
+            .getServer(ServerRequest(id: initialServerData.id))
+            .then((_) => null)
+            .onError((e, s) {
+              if (dialogCompleted.isCompleted) {
+                return;
+              }
 
-            if (e is GrpcError && e.code == StatusCode.notFound) {
-              BlocProvider.of<ServerListCubit>(
-                navigatorKey.currentContext!,
-              ).loadServers();
-              Navigator.pop(navigatorKey.currentContext!);
-              NotificationService.showNotification(
-                message: 'Server not found!',
-                severity: InfoBarSeverity.error,
-              );
-            } else {
-              Navigator.pop(navigatorKey.currentContext!);
-              NotificationService.showNotification(
-                title: 'Error joining server!',
-                message: e.toString(),
-                severity: InfoBarSeverity.error,
-              );
-            }
-          });
+              if (e is GrpcError && e.code == StatusCode.notFound) {
+                BlocProvider.of<ServerListCubit>(navigatorKey.currentContext!)
+                    .loadServers();
+                Navigator.pop(navigatorKey.currentContext!);
+                NotificationService.showNotification(
+                  message: 'Server not found!',
+                  severity: InfoBarSeverity.error,
+                );
+              } else {
+                Navigator.pop(navigatorKey.currentContext!);
+                NotificationService.showNotification(
+                  title: 'Error joining server!',
+                  message: e.toString(),
+                  severity: InfoBarSeverity.error,
+                );
+              }
+            });
 
       await dialogCompleted.future;
       final result = await dialogCompleted.future;
@@ -241,9 +239,8 @@ class ServerBrowserCubit extends Cubit<ServerBrowserState> {
     } on MissingNexusAuthException {
       rethrow;
     } catch (e, s) {
-      Logger(
-        'server_browser',
-      ).severe('Error finding download for ${mod.name}', e, s);
+      Logger('server_browser')
+          .severe('Error finding download for ${mod.name}', e, s);
       NotificationService.showNotification(
         message: 'Error finding download for ${mod.name}',
       );
@@ -289,9 +286,7 @@ class ServerBrowserCubit extends Cubit<ServerBrowserState> {
       final resp = await sl
           .get<ModBridgeGRPCService>()
           .searchClient
-          .searchMods(
-            mb.SearchModsRequest(mods: chunk),
-          )
+          .searchMods(mb.SearchModsRequest(mods: chunk))
           .catchError((e) {
             Logger('server_browser').severe('Error searching mods', e);
             NotificationService.showNotification(

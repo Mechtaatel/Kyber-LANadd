@@ -34,6 +34,7 @@ class KyberStatusCubit extends Cubit<KyberStatusState> {
       }
 
       final id = state.hasServer() ? state.server.id : state.client.serverId;
+      if (id.startsWith('lan:')) return;
       final client = sl.get<KyberGRPCService>();
       final server = await client.serverBrowserClient.getServer(
         ServerRequest(id: id),
@@ -90,11 +91,13 @@ class KyberStatusCubit extends Cubit<KyberStatusState> {
               ((state is KyberStatusPlaying || state is KyberStatusHosting) &&
                   (state as dynamic).server == null))) {
         final id = data.hasServer() ? data.server.id : data.client.serverId;
-        final client = sl.get<KyberGRPCService>();
-        server = await client.serverBrowserClient.getServer(
-          ServerRequest(id: id),
-        );
-        sl.get<RichPresence>().updatePresenceKyber(data, server);
+        if (!id.startsWith('lan:')) {
+          final client = sl.get<KyberGRPCService>();
+          server = await client.serverBrowserClient.getServer(
+            ServerRequest(id: id),
+          );
+          sl.get<RichPresence>().updatePresenceKyber(data, server);
+        }
       }
 
       if (data.hasClient()) {

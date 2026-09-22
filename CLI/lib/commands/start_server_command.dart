@@ -35,6 +35,17 @@ class StartServerCommand extends Command<int> {
         negatable: false,
       )
       ..addSeparator('Server Options')
+      ..addFlag(
+        'lan',
+        defaultsTo: false,
+        help: 'Host on LAN without Kyber registration, authentication or proxies (KYBER_LAN_ONLY=1).',
+      )
+      ..addFlag(
+        'lan-discovery',
+        defaultsTo: true,
+        help:
+            'Advertise on LAN UDP port 25202 (KYBER_LAN_DISCOVERY=0 disables).',
+      )
       ..addOption('server-name', abbr: 'n', help: 'Specify the server name')
       ..addOption('server-password', abbr: 'p', help: 'Specify the server name')
       ..addOption('server-description', help: 'Specify the server description')
@@ -69,8 +80,7 @@ class StartServerCommand extends Command<int> {
       )
       ..addOption(
         'mod-folder',
-        help:
-            'Specify a directory that contains a collection file and all required mods',
+        help: 'Specify a directory that contains a collection file and all required mods',
         valueHelp: 'path/to/dir',
       )
       ..addOption('game-path', help: 'Specify the game path')
@@ -113,8 +123,29 @@ class StartServerCommand extends Command<int> {
 
   @override
   Future<int> run() async {
-    final allowDedicated = Platform.environment['KYBER_BYPASS_DOCKER_I_REALLY_KNOW_WHAT_I_AM_DOING'];
-    if (allowDedicated == null || allowDedicated.isEmpty) {
+    final lanOnly =
+        Platform.environment['KYBER_LAN_ONLY'] == '1' ||
+        argResults?['lan'] == true;
+    final lanDiscovery =
+        Platform.environment['KYBER_LAN_DISCOVERY'] != '0' &&
+        argResults?['lan-discovery'] != false;
+    Env.set('KYBER_LAN_ONLY', lanOnly ? '1' : '0');
+    Env.set('KYBER_ONLINE_MODE', lanOnly ? '0' : '1');
+    Env.set('KYBER_LAN_DISCOVERY', lanDiscovery ? '1' : '0');
+    if (lanOnly &&
+        (Platform.environment['KYBER_SERVER_PASSWORD'] ??
+                argResults?['server-password'] ??
+                '')
+            .toString()
+            .isNotEmpty) {
+      _logger.err(
+        'LAN-only servers do not support passwords yet. Clear the server password.',
+      );
+      return ExitCode.usage.code;
+    }
+    final allowDedicated = Platform
+        .environment['KYBER_BYPASS_DOCKER_I_REALLY_KNOW_WHAT_I_AM_DOING'];
+    if (!lanOnly && (allowDedicated == null || allowDedicated.isEmpty)) {
       _logger.info(
         'To host dedicated servers, please use our Docker image. For more information, visit https://docs.kyber.gg',
       );
@@ -174,7 +205,7 @@ class StartServerCommand extends Command<int> {
         Platform.environment.containsKey('KYBER_MAP_ROTATION')) {
       File? file;
       if ((argResults?['rotation-file'] as String?) != null) {
-        final file = File(argResults?['rotation-file'] as String);
+        file = File(argResults?['rotation-file'] as String);
         if (!file.existsSync()) {
           _logger.err('The specified rotation file does not exist');
           return ExitCode.usage.code;
@@ -243,7 +274,9 @@ class StartServerCommand extends Command<int> {
     }
 
     late String kToken;
-    if (argResults?['token'] != null) {
+    if (lanOnly) {
+      kToken = '';
+    } else if (argResults?['token'] != null) {
       kToken = argResults?['token'] as String;
     } else {
       try {
@@ -270,7 +303,7 @@ class StartServerCommand extends Command<int> {
     final licenseId = '${userId}_file';
     final denuvoId = '${userId}_denuvo';
 
-    final existingToken = await _fetchLicense(id: denuvoId);
+    final existingToken = lanOnly ? null : await _fetchLicense(id: denuvoId);
     if (existingToken != null) {
       _logger.info('Found existing Denuvo token, using it...');
       Env.set('MAXIMA_DENUVO_TOKEN', existingToken);
@@ -297,13 +330,13 @@ class StartServerCommand extends Command<int> {
     Env.set('KYBER_API_HOSTNAME', sl.get<KyberGRPCService>().host);
     Env.set('KYBER_HTTP_HOSTNAME', sl.get<KyberGRPCService>().httpHostname);
 
-    await _fetchLicense(id: licenseId, isFile: true);
+    if (!lanOnly) await _fetchLicense(id: licenseId, isFile: true);
 
     logStream.listen((event) {
       switch (event.msg) {
         case final String msg when event.msg.startsWith(_denuvoLogPrefix):
           final token = msg.substring(_denuvoLogPrefix.length);
-          _uploadLicense(id: denuvoId, data: token);
+          if (!lanOnly) _uploadLicense(id: denuvoId, data: token);
       }
     });
 
@@ -344,9 +377,8 @@ class StartServerCommand extends Command<int> {
         basePath: modsDir,
         modPaths: mods,
         mods: gameplayMods.map((e) => e.toServerMod()),
-        explodedMods: ModHelper.expandMods(
-          gameplayMods,
-        ).map((e) => e.toServerMod()),
+        explodedMods: ModHelper.expandMods(gameplayMods)
+            .map((e) => e.toServerMod()),
       );
     } else if (rawModsPath != null) {
       final rawModsFile = File(rawModsPath);
@@ -369,9 +401,8 @@ class StartServerCommand extends Command<int> {
         basePath: rawMods.basePath,
         modPaths: rawMods.modPaths,
         mods: gameplayMods.map((e) => e.toServerMod()),
-        explodedMods: ModHelper.expandMods(
-          gameplayMods,
-        ).map((e) => e.toServerMod()),
+        explodedMods: ModHelper.expandMods(gameplayMods)
+            .map((e) => e.toServerMod()),
       );
     }
 
@@ -440,6 +471,7 @@ class StartServerCommand extends Command<int> {
         modData: modData,
         startupCommands: startupCommands,
         startServer: StartServerRequest(
+          lanOnly: lanOnly,
           password:
               (Platform.environment['KYBER_SERVER_PASSWORD'] ??
                       argResults?['server-password'])
@@ -511,7 +543,7 @@ class StartServerCommand extends Command<int> {
       (event) async {
         if (event == 'RequestLicense') {
           _logger.success('Kyber started');
-          _uploadLicense(id: licenseId);
+          if (!lanOnly) _uploadLicense(id: licenseId);
         }
       },
       onDone: completion.complete,
@@ -655,7 +687,9 @@ class StartServerCommand extends Command<int> {
     }
 
     try {
-      final data = metaData.split(',').map((e) => MapEntry(e.split('=').first, e.split('=').last));
+      final data = metaData
+          .split(',')
+          .map((e) => MapEntry(e.split('=').first, e.split('=').last));
       final map = Map<String, String>.fromEntries(data);
 
       return map['pinned_proxy_id'] ?? 'unknown';

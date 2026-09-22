@@ -21,6 +21,12 @@ ServerUnaryReactor* ServerInterfaceService::StartServer(
 {
     ServerUnaryReactor* reactor = context->DefaultReactor();
 
+    if (request->lanonly() && !request->password().empty())
+    {
+        reactor->Finish(Status(grpc::StatusCode::INVALID_ARGUMENT, "LAN-only servers do not support passwords yet"));
+        return reactor;
+    }
+
     g_program->m_server->m_mapRotation.Reset();
     for (const auto& entry : request->maprotation())
     {
@@ -31,6 +37,7 @@ ServerUnaryReactor* ServerInterfaceService::StartServer(
     info.name = request->name();
     info.description = request->description();
     info.password = request->password();
+    info.lanOnly = request->lanonly();
 
     auto entry = g_program->m_server->m_mapRotation.GetNextEntry();
     info.level = entry.level;

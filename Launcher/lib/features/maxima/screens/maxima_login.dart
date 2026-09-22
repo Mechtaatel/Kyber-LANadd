@@ -38,11 +38,7 @@ class _MaximaLoginState extends State<MaximaLogin> {
   Widget build(BuildContext context) {
     return CallbackShortcuts(
       bindings: <ShortcutActivator, VoidCallback>{
-        LogicalKeySet(
-          .control,
-          .shift,
-          .alt,
-        ): _toggleFrbDebugLogs,
+        LogicalKeySet(.control, .shift, .alt): _toggleFrbDebugLogs,
       },
       child: Focus(
         autofocus: true,
@@ -56,9 +52,7 @@ class _MaximaLoginState extends State<MaximaLogin> {
                   constraints: _boxConstraints,
                   decoration: BoxDecoration(
                     border: kDefaultAllBorder,
-                    borderRadius: .circular(
-                      kDefaultOuterBorderRadius,
-                    ),
+                    borderRadius: .circular(kDefaultOuterBorderRadius),
                   ),
                   padding: kDefaultPadding,
                   child: Column(
@@ -68,6 +62,18 @@ class _MaximaLoginState extends State<MaximaLogin> {
                       _Header(),
                       BlocBuilder<MaximaCubit, MaximaState>(
                         builder: _buildContent,
+                      ),
+                      BlocBuilder<MaximaCubit, MaximaState>(
+                        builder: (context, state) => KyberButton(
+                          text: 'LAN — WITHOUT KYBER SERVICES',
+                          onPressed:
+                              state.status == MaximaStatus.loading ||
+                                  state.status == MaximaStatus.starting
+                              ? null
+                              : () => context.read<MaximaCubit>().requestLogin(
+                                  lanOnly: true,
+                                ),
+                        ),
                       ),
                     ],
                   ),
@@ -141,7 +147,7 @@ class _MaximaLoginState extends State<MaximaLogin> {
   }
 
   Future<void> _requestLogin(BuildContext context) {
-    return context.read<MaximaCubit>().requestLogin().onError((
+    return context.read<MaximaCubit>().requestLogin(lanOnly: false).onError((
       error,
       stackTrace,
     ) {
@@ -317,12 +323,7 @@ class _LoginIntro extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         Row(
-          children: [
-            KyberButton(
-              text: 'Login with EA',
-              onPressed: onLogin,
-            ),
-          ],
+          children: [KyberButton(text: 'Login with EA', onPressed: onLogin)],
         ),
       ],
     );
@@ -450,9 +451,8 @@ class _MaximaGenericError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bodyStyle = FluentTheme.of(
-      context,
-    ).typography.body?.copyWith(fontSize: 16);
+    final bodyStyle = FluentTheme.of(context).typography.body
+        ?.copyWith(fontSize: 16);
 
     return DefaultTextStyle.merge(
       style: bodyStyle,

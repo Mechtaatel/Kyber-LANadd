@@ -24,7 +24,11 @@ import 'package:kyber_launcher/shared/ui/utils/button_builder.dart';
 import 'package:logging/logging.dart';
 
 class CosmeticModsDialog extends StatefulWidget {
-  const CosmeticModsDialog({required this.server, this.skipPasswordCheck = false, super.key});
+  const CosmeticModsDialog({
+    required this.server,
+    this.skipPasswordCheck = false,
+    super.key,
+  });
 
   final Object server;
   final bool skipPasswordCheck;
@@ -48,29 +52,39 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
 
   @override
   void initState() {
-    serverInfo = widget.server is ServerGroup ? (widget.server as ServerGroup).getPreferredServer() : widget.server as Server;
+    serverInfo = widget.server is ServerGroup
+        ? (widget.server as ServerGroup).getPreferredServer()
+        : widget.server as Server;
     correctPassword = widget.skipPasswordCheck || !serverInfo.requiresPassword;
     withoutMods = !Preferences.general.useCosmetics;
-    final mods = serverInfo.mods.map((e) => CollectionMod(name: e.name, version: e.version, link: e.link)).toList();
+    final mods = serverInfo.mods
+        .map(
+          (e) => CollectionMod(name: e.name, version: e.version, link: e.link),
+        )
+        .toList();
     for (final collection in collectionBox.values) {
       final gameplayMods = collection
           .getLocalMods(
-        onlyGameplay: true,
-        expandCollections: true,
-        expandGameplayCollections: false,
-      )
+            onlyGameplay: true,
+            expandCollections: true,
+            expandGameplayCollections: false,
+          )
           .whereType<FrostyMod>()
           .map((e) => e.toCollectionMod())
           .toList();
 
-      if (const ListEquality<CollectionMod>().equals(gameplayMods, mods) || collection.isCosmetic || gameplayMods.isEmpty) {
+      if (const ListEquality<CollectionMod>().equals(gameplayMods, mods) ||
+          collection.isCosmetic ||
+          gameplayMods.isEmpty) {
         collections.add(collection);
       }
     }
 
     if (Preferences.general.selectedCosmeticCollection != null) {
-      final selectedCollectionId = Preferences.general.selectedCosmeticCollection;
-      if (collectionBox.containsKey(selectedCollectionId) && collections.any((x) => x.localId == selectedCollectionId)) {
+      final selectedCollectionId =
+          Preferences.general.selectedCosmeticCollection;
+      if (collectionBox.containsKey(selectedCollectionId) &&
+          collections.any((x) => x.localId == selectedCollectionId)) {
         selectedCollection = collectionBox.get(selectedCollectionId);
       }
     }
@@ -88,10 +102,9 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
   Future<void> checkPassword() async {
     try {
       final service = sl.get<KyberGRPCService>();
-      final result = await service.serverBrowserClient.canJoinServer(CanJoinServerRequest(
-        id: serverInfo.id,
-        password: password,
-      ));
+      final result = await service.serverBrowserClient.canJoinServer(
+        CanJoinServerRequest(id: serverInfo.id, password: password),
+      );
 
       if (result.canJoin) {
         return setState(() {
@@ -124,10 +137,7 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
   Widget build(BuildContext context) {
     return KyberContentDialog(
       title: Text('Start Game'.toUpperCase()),
-      constraints: const BoxConstraints(
-        maxHeight: 500,
-        maxWidth: 700,
-      ),
+      constraints: const BoxConstraints(maxHeight: 500, maxWidth: 700),
       content: SizedBox(
         width: 450,
         child: Builder(
@@ -137,17 +147,11 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
                 children: [
                   const Text(
                     'This server requires a password to join.',
-                    style: TextStyle(
-                      color: kWhiteColor,
-                    ),
+                    style: TextStyle(color: kWhiteColor),
                   ),
-                  const SizedBox(
-                    height: 10,
-                  ),
+                  const SizedBox(height: 10),
                   Align(child: Text('Enter Password'.toUpperCase())),
-                  const SizedBox(
-                    height: 2.5,
-                  ),
+                  const SizedBox(height: 2.5),
                   KyberInput(
                     onFieldSubmitted: (value) => checkPassword(),
                     placeholder: 'Password',
@@ -175,19 +179,17 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
                       ),
                       children: [
                         TextSpan(
-                          text: '#${(widget.server as ServerGroup).getInstanceId(serverInfo.id)}',
-                          style: TextStyle(
-                            color: kActiveColor,
-                          ),
+                          text:
+                              '#${(widget.server as ServerGroup).getInstanceId(serverInfo.id)}',
+                          style: TextStyle(color: kActiveColor),
                         ),
                         const TextSpan(
                           text: ' | ',
-                          style: TextStyle(
-                            color: decoColor,
-                          ),
+                          style: TextStyle(color: decoColor),
                         ),
                         TextSpan(
-                          text: '(${serverInfo.playerCount}/${serverInfo.maxPlayerCount})',
+                          text:
+                              '(${serverInfo.playerCount}/${serverInfo.maxPlayerCount})',
                         ),
                       ],
                     ),
@@ -196,7 +198,8 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
                     Padding(
                       padding: const EdgeInsets.only(top: 10),
                       child: ButtonBuilder(
-                        onClick: () => setState(() => showInstanceSelector = true),
+                        onClick: () =>
+                            setState(() => showInstanceSelector = true),
                         builder: (context, hovered) {
                           return Text(
                             'CHANGE INSTANCE',
@@ -218,31 +221,37 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
                         },
                         itemBuilder: (DropdownItem<dynamic> item) {
                           item as DropdownItem<Server>;
-                          final instanceId = (widget.server as ServerGroup).getInstanceId(item.value.id);
+                          final instanceId = (widget.server as ServerGroup)
+                              .getInstanceId(item.value.id);
                           final serverInfo = item.value;
                           return Row(
                             children: [
                               SizedBox(
                                 width: 70,
                                 height: 45,
-                                child: Builder(builder: (context) {
-                                  if (serverInfo.mapImageHash.isNotEmpty) {
-                                    return CachedNetworkImage(
-                                      imageUrl: 'https://${sl.get<KyberGRPCService>().httpHostname}/images/${serverInfo.mapImageHash}.jpeg',
+                                child: Builder(
+                                  builder: (context) {
+                                    if (serverInfo.mapImageHash.isNotEmpty) {
+                                      return CachedNetworkImage(
+                                        imageUrl:
+                                            'https://${sl.get<KyberGRPCService>().httpHostname}/images/${serverInfo.mapImageHash}.jpeg',
+                                        fit: BoxFit.cover,
+                                        alignment: Alignment.centerLeft,
+                                        colorBlendMode: BlendMode.darken,
+                                        color: Colors.black.withOpacity(.12),
+                                      );
+                                    }
+
+                                    return MapHelper.getImageForMap(
+                                      serverInfo.levelSetup.map,
+                                    )!.image(
                                       fit: BoxFit.cover,
                                       alignment: Alignment.centerLeft,
                                       colorBlendMode: BlendMode.darken,
                                       color: Colors.black.withOpacity(.12),
                                     );
-                                  }
-
-                                  return MapHelper.getImageForMap(serverInfo.levelSetup.map)!.image(
-                                    fit: BoxFit.cover,
-                                    alignment: Alignment.centerLeft,
-                                    colorBlendMode: BlendMode.darken,
-                                    color: Colors.black.withOpacity(.12),
-                                  );
-                                }),
+                                  },
+                                ),
                               ),
                               Container(width: 2, height: 45, color: decoColor),
                               Expanded(
@@ -250,7 +259,9 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10).copyWith(top: 5),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                      ).copyWith(top: 5),
                                       child: Text(
                                         'INSTANCE #$instanceId',
                                         style: const TextStyle(
@@ -261,7 +272,9 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
                                       ),
                                     ),
                                     Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                      ),
                                       child: Row(
                                         children: [
                                           RichText(
@@ -269,13 +282,25 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
                                               style: const TextStyle(
                                                 fontSize: 16,
                                                 color: kWhiteColor1,
-                                                fontFamily: FontFamily.battlefrontUI,
+                                                fontFamily:
+                                                    FontFamily.battlefrontUI,
                                               ),
                                               children: [
                                                 TextSpan(
-                                                  text: serverInfo.levelSetup.modeName.isNotEmpty
-                                                      ? serverInfo.levelSetup.modeName
-                                                      : MapHelper.getMode(serverInfo.levelSetup.mode)?.name ?? 'UNKNOWN MODE',
+                                                  text:
+                                                      serverInfo
+                                                          .levelSetup
+                                                          .modeName
+                                                          .isNotEmpty
+                                                      ? serverInfo
+                                                            .levelSetup
+                                                            .modeName
+                                                      : MapHelper.getMode(
+                                                              serverInfo
+                                                                  .levelSetup
+                                                                  .mode,
+                                                            )?.name ??
+                                                            'UNKNOWN MODE',
                                                 ),
                                                 const TextSpan(
                                                   text: ' | ',
@@ -284,13 +309,27 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
                                                   ),
                                                 ),
                                                 TextSpan(
-                                                  text: serverInfo.levelSetup.mapName.isNotEmpty
-                                                      ? serverInfo.levelSetup.mapName
-                                                      : MapHelper.getMap(serverInfo.levelSetup.mode, serverInfo.levelSetup.map)?.name ?? 'UNKNOWN MAP',
+                                                  text:
+                                                      serverInfo
+                                                          .levelSetup
+                                                          .mapName
+                                                          .isNotEmpty
+                                                      ? serverInfo
+                                                            .levelSetup
+                                                            .mapName
+                                                      : MapHelper.getMap(
+                                                              serverInfo
+                                                                  .levelSetup
+                                                                  .mode,
+                                                              serverInfo
+                                                                  .levelSetup
+                                                                  .map,
+                                                            )?.name ??
+                                                            'UNKNOWN MAP',
                                                 ),
                                               ],
                                             ),
-                                          )
+                                          ),
                                         ],
                                       ),
                                     ),
@@ -298,7 +337,9 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
                                 ),
                               ),
                               Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 10),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                ),
                                 child: Text(
                                   '${item.value.playerCount}/${item.value.maxPlayerCount}',
                                   style: const TextStyle(
@@ -310,8 +351,14 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
                             ],
                           );
                         },
-                        items: (widget.server as ServerGroup).getSorted().map((e) {
-                          return DropdownItem(value: e, label: 'INSTANCE #${(widget.server as ServerGroup).getInstanceId(e.id)}');
+                        items: (widget.server as ServerGroup).getSorted().map((
+                          e,
+                        ) {
+                          return DropdownItem(
+                            value: e,
+                            label:
+                                'INSTANCE #${(widget.server as ServerGroup).getInstanceId(e.id)}',
+                          );
                         }).toList(),
                         selectedItem: serverInfo,
                       ),
@@ -322,13 +369,9 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
                 const Text('PLAY WITH OR WITHOUT COSMETIC MODS'),
                 const Text(
                   'Select an option to load the game with or without cosmetic mods.',
-                  style: TextStyle(
-                    color: kWhiteColor,
-                  ),
+                  style: TextStyle(color: kWhiteColor),
                 ),
-                const SizedBox(
-                  height: 10,
-                ),
+                const SizedBox(height: 10),
                 SizedBox(
                   height: 35,
                   child: KyberTabBar(
@@ -346,23 +389,28 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
                   ),
                 ),
                 if (!withoutMods) ...[
-                  const SizedBox(
-                    height: 30,
-                  ),
+                  const SizedBox(height: 30),
                   KyberDropdown<ModCollectionMetaData>(
                     onChanged: (value) {
                       setState(() => selectedCollection = value);
-                      Preferences.general.selectedCosmeticCollection = value.localId;
+                      Preferences.general.selectedCosmeticCollection =
+                          value.localId;
                     },
                     itemBuilder: (DropdownItem<dynamic> item) {
                       item as DropdownItem<ModCollectionMetaData>;
                       return Row(
                         children: [
-                          SizedBox(height: 40, width: 40, child: CollectionIcon(collection: item.value)),
+                          SizedBox(
+                            height: 40,
+                            width: 40,
+                            child: CollectionIcon(collection: item.value),
+                          ),
                           Container(width: 2, height: 40, color: decoColor),
                           Expanded(
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 10),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                              ),
                               child: Text(
                                 item.value.title,
                                 style: const TextStyle(
@@ -375,7 +423,9 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
                         ],
                       );
                     },
-                    items: collections.map((e) => DropdownItem(value: e, label: e.title)).toList(),
+                    items: collections
+                        .map((e) => DropdownItem(value: e, label: e.title))
+                        .toList(),
                     selectedItem: selectedCollection,
                     placeholder: 'SELECT A COLLECTION',
                   ),
@@ -386,19 +436,15 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
         ),
       ),
       actions: [
-        KyberButton(
-          text: 'Cancel',
-          onPressed: Navigator.of(context).pop,
-        ),
+        KyberButton(text: 'Cancel', onPressed: Navigator.of(context).pop),
         if (!correctPassword)
-          KyberButton(
-            text: 'Next',
-            onPressed: checkPassword,
-          ),
+          KyberButton(text: 'Next', onPressed: checkPassword),
         if (correctPassword)
           NormalButton(
             onPressed: () => setState(() => spectator = !spectator),
-            iconData: spectator ? mt.Icons.check_circle : mt.Icons.circle_outlined,
+            iconData: spectator
+                ? mt.Icons.check_circle
+                : mt.Icons.circle_outlined,
             label: const Row(
               children: [
                 Icon(mt.Icons.remove_red_eye_outlined),
@@ -412,14 +458,17 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
             text: 'Join Server',
             icon: Assets.icons.kyberLogo.svg(height: 20),
             onPressed: () async {
-              if (!serverInfo.requiresPassword) {
+              if (!serverInfo.requiresPassword && !serverInfo.isLanOnly) {
                 try {
-                  final result = await sl.get<KyberGRPCService>().serverBrowserClient.canJoinServer(
-                    CanJoinServerRequest(
-                      id: serverInfo.id,
-                      password: password,
-                    ),
-                  );
+                  final result = await sl
+                      .get<KyberGRPCService>()
+                      .serverBrowserClient
+                      .canJoinServer(
+                        CanJoinServerRequest(
+                          id: serverInfo.id,
+                          password: password,
+                        ),
+                      );
 
                   if (!result.canJoin) {
                     NotificationService.showNotification(
@@ -439,7 +488,9 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
                   } else {
                     Logger.root.severe('An error occurred', e, s);
                     NotificationService.showNotification(
-                      message: e is GrpcError ? e.message ?? e.code.toString() : 'An error occurred',
+                      message: e is GrpcError
+                          ? e.message ?? e.code.toString()
+                          : 'An error occurred',
                       severity: InfoBarSeverity.error,
                     );
                   }
@@ -448,10 +499,14 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
               }
 
               final result = JoinDialogResult(
-                collection: withoutMods ? ModCollectionMetaData.noMods() : selectedCollection ?? ModCollectionMetaData.noMods(),
+                collection: withoutMods
+                    ? ModCollectionMetaData.noMods()
+                    : selectedCollection ?? ModCollectionMetaData.noMods(),
                 spectator: spectator,
                 password: password,
-                instanceId: widget.server is ServerGroup ? serverInfo.meta['instance_id'] : null,
+                instanceId: widget.server is ServerGroup
+                    ? serverInfo.meta['instance_id']
+                    : null,
               );
 
               Navigator.of(context).pop(result);
@@ -463,7 +518,12 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
 }
 
 class JoinDialogResult {
-  JoinDialogResult({required this.collection, required this.spectator, this.password = '', this.instanceId});
+  JoinDialogResult({
+    required this.collection,
+    required this.spectator,
+    this.password = '',
+    this.instanceId,
+  });
 
   final ModCollectionMetaData collection;
   final bool spectator;

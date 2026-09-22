@@ -22,7 +22,10 @@ void main() {
       compilerOptions: [
         '-include',
         'stdbool.h',
-        '-I${packageRoot.resolve('third_party/vivox').path.substring(1)}',
+        '-I',
+        packageRoot
+            .resolve('third_party/vivox')
+            .toFilePath(windows: Platform.isWindows),
       ],
       entryPoints: [
         packageRoot.resolve(
@@ -31,5 +34,10 @@ void main() {
         packageRoot.resolve('third_party/unrar.h'),
       ],
     ),
-  ).generate();
+  ).generate(
+    libclangDylib: switch (Platform.environment['KYBER_LIBCLANG_PATH']) {
+      final path? => Uri.file(path),
+      null => null,
+    },
+  );
 }

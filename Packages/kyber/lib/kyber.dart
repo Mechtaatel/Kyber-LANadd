@@ -1,5 +1,7 @@
 library kyber;
 
+export 'src/lan_discovery.dart';
+
 export 'gen/Proto/kyber_api.pb.dart';
 export 'gen/Proto/kyber_common.pb.dart';
 export 'gen/Proto/kyber_interface.pb.dart' hide ServerPlayer, ProxyList;

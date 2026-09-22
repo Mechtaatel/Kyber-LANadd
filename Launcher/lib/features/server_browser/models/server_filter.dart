@@ -6,29 +6,17 @@ import 'package:kyber_launcher/core/routing/app_router.dart';
 import 'package:kyber_launcher/features/kyber/providers/kyber_proxy_cubit.dart';
 import 'package:kyber_launcher/features/maxima/providers/maxima_cubit.dart';
 
-enum ServerType {
-  all,
-  official,
-  custom,
-  private,
-  event,
-}
+enum ServerType { all, official, custom, private, event }
 
-enum ServerRegion {
-  all,
-  na,
-  sa,
-  eu,
-  as,
-  oc,
-  af,
-}
+enum ServerRegion { all, lan, na, sa, eu, as, oc, af }
 
 extension ServerTypeExtension on ServerRegion {
   String get displayName {
     switch (this) {
       case .all:
         return 'All Regions';
+      case .lan:
+        return 'LAN';
       case .na:
         return 'North America';
       case .sa:
@@ -45,11 +33,7 @@ extension ServerTypeExtension on ServerRegion {
   }
 }
 
-enum GameType {
-  all,
-  modded,
-  vanilla,
-}
+enum GameType { all, modded, vanilla }
 
 // api should return this at some point
 const Map<List<String>, ServerRegion> regionMappings = {
@@ -58,10 +42,7 @@ const Map<List<String>, ServerRegion> regionMappings = {
 };
 
 class ServerGroup {
-  ServerGroup({
-    required this.servers,
-    required this.groupName,
-  });
+  ServerGroup({required this.servers, required this.groupName});
 
   final List<Server> servers;
   final String groupName;
@@ -82,7 +63,10 @@ class ServerGroup {
   }
 
   ServerRegion getPreferredRegion() {
-    final pinnedProxies = servers.where((e) => e.meta.containsKey('pinned_proxy_id')).map((e) => e.meta['pinned_proxy_id']!).toSet();
+    final pinnedProxies = servers
+        .where((e) => e.meta.containsKey('pinned_proxy_id'))
+        .map((e) => e.meta['pinned_proxy_id']!)
+        .toSet();
 
     // TODO: use server region instead
     if (pinnedProxies.isEmpty) {
@@ -101,7 +85,10 @@ class ServerGroup {
       return region.value;
     }
 
-    final proxies = navigatorKey.currentContext!.read<KyberProxyCubit>().state.proxies;
+    final proxies = navigatorKey.currentContext!
+        .read<KyberProxyCubit>()
+        .state
+        .proxies;
 
     final proxy = proxies.firstWhere((e) => pinnedProxies.contains(e.proxy.id));
     final region = regionMappings.entries.firstWhereOrNull(
@@ -136,7 +123,10 @@ class ServerGroup {
   }
 
   int get totalPlayerCount {
-    return servers.fold<int>(0, (previousValue, element) => previousValue + element.playerCount);
+    return servers.fold<int>(
+      0,
+      (previousValue, element) => previousValue + element.playerCount,
+    );
   }
 
   Server get serverInfo {

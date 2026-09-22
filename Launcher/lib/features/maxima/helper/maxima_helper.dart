@@ -49,19 +49,23 @@ class MaximaHelper {
     if (modCollection != null) {
       if (modCollection.getLocalMods().contains(null)) {
         NotificationService.error(
-          message:
-              'Some mods in your collection are missing. Please check your mod collection.',
+          message: 'Some mods in your collection are missing. Please check your mod collection.',
         );
         return;
       }
 
       final modPaths = modCollection.getModPaths();
-      final preloadedMods = await sl
-          .get<KyberGRPCService>()
-          .launcherClient
-          .getPreloadedMods(Empty());
-      final modLimit = Preferences.general.enabledPreloadMods
-          ? 1739 - preloadedMods.mods.length
+      final lanOnly =
+          initializeRequest.startServer.lanOnly ||
+          initializeRequest.hasJoinServer() &&
+              !initializeRequest.joinServer.hasId();
+      final preloadedMods = lanOnly
+          ? null
+          : await sl.get<KyberGRPCService>().launcherClient.getPreloadedMods(
+              Empty(),
+            );
+      final modLimit = !lanOnly && Preferences.general.enabledPreloadMods
+          ? 1739 - preloadedMods!.mods.length
           : 1739;
       if (modPaths.length >= modLimit) {
         _logger.warning('Mod limit reached: ${modPaths.length}');
@@ -85,10 +89,7 @@ class MaximaHelper {
             .map(ServerMod().fromFrostyMod)
             .toList(),
         explodedMods: modCollection
-            .getLocalMods(
-              onlyGameplay: true,
-              expandCollections: true,
-            )
+            .getLocalMods(onlyGameplay: true, expandCollections: true)
             .whereType<FrostyMod>()
             .where((e) => !e.isCollection)
             .map(ServerMod().fromFrostyMod)
@@ -147,13 +148,23 @@ class MaximaHelper {
     final moduleDebug = Preferences.debug.moduleDebugLogs;
     final newPath = '$path;${FileHelper.getModuleDirectory().path}';
     final interfacePort = await KyberNetworkHelper.findAvailablePort();
-    final kToken = await sl.get<KyberGRPCService>().getAuthToken(
-      await maxima.getAuthToken(),
-    );
+    final lanOnly =
+        LanMode.enabled ||
+        (initializeRequest?.startServer.lanOnly ?? false) ||
+        initializeRequest != null &&
+            initializeRequest.hasJoinServer() &&
+            !initializeRequest.joinServer.hasId();
+    ProcessEnv.set('KYBER_LAN_ONLY', lanOnly ? '1' : '0');
+    ProcessEnv.set('KYBER_ONLINE_MODE', lanOnly ? '0' : '1');
+    final kToken = lanOnly
+        ? ''
+        : await sl.get<KyberGRPCService>().getAuthToken(
+            await maxima.getAuthToken(),
+          );
     ProcessEnv.set('KYBER_API_TOKEN', kToken);
     ProcessEnv.set(
       'KYBER_MODULE_VERSION',
-      (await VersionModule.module.getCurrentVersion())!,
+      (await VersionModule.module.getCurrentVersion()) ?? 'local',
     );
     ProcessEnv.set('KYBER_INTERFACE_PORT', interfacePort.toString());
     ProcessEnv.set(
@@ -197,6 +208,7 @@ class MaximaHelper {
     }
 
     final instance = MaximaGameInstance(
+      lanOnly: lanOnly,
       pid: gamePID,
       clientService: gameClient,
       isDedicated: false,

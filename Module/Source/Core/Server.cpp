@@ -155,6 +155,7 @@ Server::Server()
 
 Server::~Server()
 {
+    CloseLanDiscovery();
     KYBER_LOG(Debug, "[Server] Destroying");
 }
 
@@ -179,6 +180,7 @@ void Server::Initialize()
 
 void Server::Start(const ServerCreationInfo& info, bool changeState)
 {
+    m_onlineMode = !info.lanOnly && IsOnlineMode();
     EnableGameHooks();
 
     NetworkSettings* networkSettings = Settings<NetworkSettings>("Network");
@@ -248,7 +250,7 @@ void Server::LoadNextLevel(
     InitLevelSetup(&levelSetup, level, mode, startPoint, initialSubLevel);
     ServerLoadLevelMessage_post(&levelSetup, true, true);
 
-    if (!updateServerBrowser || m_serverId.empty())
+    if (!updateServerBrowser || !m_onlineMode || m_serverId.empty())
     {
         return;
     }
@@ -440,7 +442,7 @@ void ServerPlayerSetTeamIdHk(ServerPlayer* inst, int teamId)
     static const auto trampoline = HookManager::Call(ServerPlayerSetTeamIdHk);
     trampoline(inst, teamId);
 
-    if (!inst->IsAIPlayer())
+    if (!inst->IsAIPlayer() && g_program->m_server->m_onlineMode)
     {
         g_program->GetAPI()->GetServerManagement()->SendPlayerList();
     }
@@ -625,6 +627,7 @@ bool ServerConnectionOnCreatePlayerMessageHk(ServerConnection* inst, NetworkCrea
 
 void Server::Heartbeat(const UpdateParameters& params)
 {
+    PollLanDiscovery();
     if (!IsRunning() || !m_onlineMode)
     {
         return;
@@ -659,6 +662,7 @@ void Server::Register(bool force)
 
     if (!m_onlineMode)
     {
+        m_serverId = "lan:" + std::to_string(GetCurrentProcessId());
         return;
     }
 
@@ -825,7 +829,7 @@ void Server::OnClientStartup()
 
 void Server::SendConsoleMessage(const std::string& message)
 {
-    if (!IsRunning())
+    if (!IsRunning() || !m_onlineMode)
     {
         return;
     }
@@ -835,6 +839,7 @@ void Server::SendConsoleMessage(const std::string& message)
 
 void Server::Stop()
 {
+    CloseLanDiscovery();
     KYBER_LOG(Info, "[Server] Stopping Kyber server...");
 
     m_runningHosted = false;
