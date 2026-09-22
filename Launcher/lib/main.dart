@@ -9,6 +9,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_js/flutter_js.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
+    show ExternalLibrary;
 import 'package:form_builder_validators/localization/l10n.dart';
 import 'package:grpc/grpc.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
@@ -72,6 +74,31 @@ Box<ModCollectionMetaData> collectionBox = Hive.box<ModCollectionMetaData>(
 );
 String applicationDocumentsDirectory = '';
 
+String? _findRustLibraryPath() {
+  if (!Platform.isWindows) {
+    return null;
+  }
+
+  final candidates = <String>[
+    join(dirname(Platform.resolvedExecutable), 'rust_lib.dll'),
+    join(
+      Directory.current.path,
+      'build',
+      'native_assets',
+      'windows',
+      'rust_lib.dll',
+    ),
+  ];
+
+  for (final candidate in candidates) {
+    if (File(candidate).existsSync()) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 Future<void> initSentry(String currentVersion) async => SentryFlutter.init(
   (options) {
     options
@@ -99,7 +126,8 @@ Future<void> initSentry(String currentVersion) async => SentryFlutter.init(
           return null;
         }
 
-        if (exception is FlutterError && exception.message.contains('RenderFlex')) {
+        if (exception is FlutterError &&
+            exception.message.contains('RenderFlex')) {
           return null;
         }
 
@@ -131,17 +159,20 @@ Future<void> loadCerts() async {
 String? launcherVersion;
 
 void main() async {
-  if (Platform.isWindows &&! kDebugMode) {
-    final exeDir = dirname(Platform.resolvedExecutable);
-    final rustLib = File(join(exeDir, 'rust_lib.dll'));
-    if (!rustLib.existsSync()) {
+  final rustLibraryPath = _findRustLibraryPath();
+  if (Platform.isWindows && !kDebugMode) {
+    if (rustLibraryPath == null) {
       showRustLibMissingDialog();
       exit(0);
     }
   }
 
   await Rhttp.init();
-  await MaximaLib.init();
+  await MaximaLib.init(
+    externalLibrary: rustLibraryPath == null
+        ? null
+        : ExternalLibrary.open(rustLibraryPath),
+  );
 
   await runZonedGuarded(
     () async {
@@ -244,7 +275,8 @@ class _AppState extends State<App> {
     return ToastificationWrapper(
       config: ToastificationConfig(
         animationDuration: const Duration(seconds: 1),
-        marginBuilder: (context, child) => const .only(bottom: 20, left: 20, right: 20),
+        marginBuilder: (context, child) =>
+            const .only(bottom: 20, left: 20, right: 20),
       ),
       child: HiveListener(
         box: box,

@@ -39,3 +39,15 @@ target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)
+
+# Native assets produced by flutter_rust_bridge are not bundled by Flutter's
+# Windows template automatically. Keep the Rust FFI library beside the app so
+# packaged builds can start without an environment variable.
+add_custom_command(
+  TARGET ${BINARY_NAME} POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${PROJECT_BUILD_DIR}native_assets/windows/rust_lib.dll"
+    "$<TARGET_FILE_DIR:${BINARY_NAME}>/rust_lib.dll"
+  COMMENT "Copying Rust native asset"
+  VERBATIM
+)
