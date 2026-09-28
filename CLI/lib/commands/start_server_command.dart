@@ -38,7 +38,7 @@ class StartServerCommand extends Command<int> {
       ..addFlag(
         'lan',
         defaultsTo: false,
-        help: 'Host on LAN without Kyber registration, authentication or proxies (KYBER_LAN_ONLY=1).',
+        help: 'Host on LAN without Kyber services (KYBER_LAN=1).',
       )
       ..addFlag(
         'lan-discovery',
@@ -80,7 +80,8 @@ class StartServerCommand extends Command<int> {
       )
       ..addOption(
         'mod-folder',
-        help: 'Specify a directory that contains a collection file and all required mods',
+        help:
+            'Specify a directory that contains a collection file and all required mods',
         valueHelp: 'path/to/dir',
       )
       ..addOption('game-path', help: 'Specify the game path')
@@ -124,7 +125,7 @@ class StartServerCommand extends Command<int> {
   @override
   Future<int> run() async {
     final lanOnly =
-        Platform.environment['KYBER_LAN_ONLY'] == '1' ||
+        LanMode.fromEnvironment(Platform.environment) ||
         argResults?['lan'] == true;
     final lanDiscovery =
         Platform.environment['KYBER_LAN_DISCOVERY'] != '0' &&
@@ -164,20 +165,28 @@ class StartServerCommand extends Command<int> {
     final modulePath = argResults?['module-path'] as String?;
     EnvHelper.setPath(modulePath);
 
-    _logger.info('Starting login flow...');
     late String playerName;
     final loginCredentials = argResults?['credentials'] as String?;
+    (String, String)? credentials;
+    _logger.info(
+      loginCredentials == null
+          ? 'Starting EA login flow...'
+          : 'EA credentials supplied; game license has not been verified yet.',
+    );
     try {
       if (loginCredentials == null) {
         final player = await loginFlow();
         playerName = player.displayName;
       } else {
-        playerName = 'ServerUser';
-        final split = loginCredentials.split(':');
-        if (split.length != 2) {
+        final separator = loginCredentials.indexOf(':');
+        if (separator <= 0 || separator == loginCredentials.length - 1) {
           _logger.err('Invalid credentials format. Use persona:password');
           return ExitCode.usage.code;
         }
+        credentials = (
+          loginCredentials.substring(0, separator),
+          loginCredentials.substring(separator + 1),
+        );
       }
     } catch (e) {
       if (e is PanicException || e is AnyhowException) {
@@ -196,9 +205,10 @@ class StartServerCommand extends Command<int> {
       return ExitCode.usage.code;
     }
 
-    _logger
-      ..success('Logged in as $playerName.')
-      ..info('Starting game...');
+    if (loginCredentials == null) {
+      _logger.success('Logged in as $playerName.');
+    }
+    _logger.info('Starting game...');
 
     final mapRotation = <LevelSetup>[];
     if (argResults?['rotation-file'] != null ||
@@ -299,7 +309,7 @@ class StartServerCommand extends Command<int> {
 
     sl.get<KyberGRPCService>().token = kToken;
 
-    final userId = _stableStringHash(loginCredentials?.split(':').first ?? '');
+    final userId = _stableStringHash(credentials?.$1 ?? '');
     final licenseId = '${userId}_file';
     final denuvoId = '${userId}_denuvo';
 
@@ -345,23 +355,42 @@ class StartServerCommand extends Command<int> {
     var gameplayMods = <FrostyMod>[];
     if (collectionFile != null) {
       final metaData = await ModCollection.readCollection(collectionFile);
-      var modsDir =
-          modFolder ??
-          argResults?['collection-mods-directory'] as String? ??
-          CollectionHelper().getModsDirectory();
-
-      final mods = CollectionHelper().getModsList(
-        metaData,
-        modDirectory: modsDir,
+      var modsDir = absolute(
+        modFolder ??
+            argResults?['collection-mods-directory'] as String? ??
+            CollectionHelper().getModsDirectory(),
       );
+      final mods = CollectionHelper().getModsList(metaData);
       final apiMods = CollectionHelper().getModsList(
         metaData,
         listFrostyCollectionMods: false,
       );
 
+      // Keep the original kyber-cli semantics: .kbcollection supplies the
+      // mod paths. Reject mismatches before the DLL loads only a subset.
+      final requiredModPaths = {...mods, ...apiMods};
+      final missingModPaths = requiredModPaths
+          .where((path) => !File(join(modsDir, path)).existsSync())
+          .toList();
+      if (missingModPaths.isNotEmpty) {
+        _logger.err(
+          'Mod path mismatch: ${missingModPaths.length} of '
+          '${requiredModPaths.length} paths referenced by the collection are '
+          'not readable at their exact location under $modsDir. Check the '
+          'container mount, subdirectories, filenames and Linux letter case.',
+        );
+        for (final path in missingModPaths.take(5)) {
+          _logger.err('Expected mod path: ${join(modsDir, path)}');
+        }
+        if (missingModPaths.length > 5) {
+          _logger.err('...and ${missingModPaths.length - 5} more.');
+        }
+        return ExitCode.usage.code;
+      }
+
       _logger.info('Reading ${mods.length} mods');
       final fbMods = ModHelper.readFrostyMods(
-        apiMods.map((e) => join(modsDir, basename(e))).toList(),
+        apiMods.map((e) => join(modsDir, e)).toList(),
       );
 
       if (Platform.isLinux) {
@@ -377,8 +406,9 @@ class StartServerCommand extends Command<int> {
         basePath: modsDir,
         modPaths: mods,
         mods: gameplayMods.map((e) => e.toServerMod()),
-        explodedMods: ModHelper.expandMods(gameplayMods)
-            .map((e) => e.toServerMod()),
+        explodedMods: ModHelper.expandMods(
+          gameplayMods,
+        ).map((e) => e.toServerMod()),
       );
     } else if (rawModsPath != null) {
       final rawModsFile = File(rawModsPath);
@@ -401,8 +431,9 @@ class StartServerCommand extends Command<int> {
         basePath: rawMods.basePath,
         modPaths: rawMods.modPaths,
         mods: gameplayMods.map((e) => e.toServerMod()),
-        explodedMods: ModHelper.expandMods(gameplayMods)
-            .map((e) => e.toServerMod()),
+        explodedMods: ModHelper.expandMods(
+          gameplayMods,
+        ).map((e) => e.toServerMod()),
       );
     }
 
@@ -503,22 +534,22 @@ class StartServerCommand extends Command<int> {
     );
 
     late int pid;
-    if (loginCredentials == null) {
+    try {
       pid = await startGame(
         gameSlug: 'star-wars-battlefront-2',
         gamePathOverride: argResults?['game-path'] as String?,
         gameArgs: [],
+        user: credentials?.$1,
+        pass: credentials?.$2,
       );
-    } else {
-      final split = loginCredentials.split(':');
-
-      pid = await startGame(
-        gameSlug: 'star-wars-battlefront-2',
-        gamePathOverride: argResults?['game-path'] as String?,
-        gameArgs: [],
-        user: split[0],
-        pass: split[1],
+    } on AnyhowException catch (e) {
+      if (!e.message.contains('NO_SUCH_USER')) rethrow;
+      _logger.err(
+        'EA rejected the game-license request (NO_SUCH_USER). Check the '
+        'EA email/persona in MAXIMA_CREDENTIALS and that this account owns '
+        'Battlefront II. LAN mode still requires EA licensing.',
       );
+      return ExitCode.usage.code;
     }
 
     final moduleDir = modulePath ?? FileHelper.getModuleDirectory().path;
@@ -542,8 +573,10 @@ class StartServerCommand extends Command<int> {
     lsxGetEventStream(pid: pid).listen(
       (event) async {
         if (event == 'RequestLicense') {
-          _logger.success('Kyber started');
-          if (!lanOnly) _uploadLicense(id: licenseId);
+          _logger.info(
+            'Game requested a license; server readiness is not yet confirmed',
+          );
+          if (!lanOnly) await _uploadLicense(id: licenseId);
         }
       },
       onDone: completion.complete,
@@ -612,6 +645,7 @@ class StartServerCommand extends Command<int> {
     } catch (e) {
       _logger.err('Error fetching license: $e');
     }
+    return null;
   }
 
   Future<void> _uploadLicense({required String id, String? data}) async {
@@ -630,7 +664,7 @@ class StartServerCommand extends Command<int> {
       final String d when d.isNotEmpty => utf8.encode(d),
       _ => () {
         if (!Platform.isLinux) {
-          return [];
+          return <int>[];
         }
 
         const licensePath =
@@ -657,7 +691,7 @@ class StartServerCommand extends Command<int> {
       _ => '',
     };
     try {
-      final response = await dio.put(
+      final response = await dio.put<void>(
         '$endpoint/$id$regionId',
         data: licenseData,
         options: Options(

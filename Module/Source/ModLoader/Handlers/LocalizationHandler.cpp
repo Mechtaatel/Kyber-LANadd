@@ -68,7 +68,10 @@ bool LocalizationHandler::Modify(CustomAssetHandlerContext& ctx, DataContainer* 
     catch (const std::exception& error)
     {
         KYBER_LOG(Error, "[ModLoader] Localization merge failed; preserving original text: " << error.what());
-        return false;
+        // GenericCustomAssetHandler callers interpret false as "retry now".
+        // Malformed/unsupported localization data cannot become valid by
+        // retrying, and the retry loop blocks game startup indefinitely.
+        return true;
     }
 }
 } // namespace Kyber

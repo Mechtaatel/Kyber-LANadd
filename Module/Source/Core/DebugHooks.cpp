@@ -325,7 +325,6 @@ void InitializeDebugHooks()
         { OFFSET_VIRTUALFILESYSTEM_MOUNT, VirtualFileSystemMountHk },
         { OFFSET_VIRTUALFILESYSTEM_CREATEBUFFER, VirtualFileSystemCreateBufferHk },
         { OFFSET_WIN32BUFFER_READEX, Win32BufferReadExHk },
-        { OFFSET_GAMERENDERER_RENDER, GameRendererRenderHk },
         { OFFSET_HEARTBEATMONITOR_BEAT, HeartbeatMonitorBeatHk },
         { HOOK_OFFSET(0x140208AE0), ScriptContextImplExecuteScriptFileHk },
         { HOOK_OFFSET(0x1401F54A0), SettingsManagerAddHk },
@@ -336,6 +335,13 @@ void InitializeDebugHooks()
     for (HookTemplate& hook : hookOffsets)
     {
         HookManager::CreateHook(hook.offset, hook.hook);
+    }
+
+    // Dedicated mode uses Frostbite's null renderer; do not install hooks
+    // that call into the client renderer or render-only mod listeners.
+    if (!g_program->m_isDedicatedServer)
+    {
+        HookManager::CreateHook(OFFSET_GAMERENDERER_RENDER, GameRendererRenderHk);
     }
 
     Hook::ApplyQueuedActions();

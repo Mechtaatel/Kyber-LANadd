@@ -20,12 +20,17 @@ class ServerSettings extends StatelessWidget {
             itemStyle: const TextStyle(fontSize: 17),
             items: [
               KyberTableItem.custom(
-                title: 'LAN ONLY (NO KYBER SERVICES)',
+                title: 'LAN ONLY',
+                onClick: () {
+                  final field = hostingForm.currentState?.fields['lanOnly'];
+                  field?.didChange(!(field.value as bool? ?? false));
+                },
                 builder: (hovered) => FormBuilderField<bool>(
                   name: 'lanOnly',
                   initialValue: false,
-                  builder: (field) => ToggleSwitch(
-                    checked: field.value ?? false,
+                  builder: (field) => KyberTableSwitch(
+                    value: field.value ?? false,
+                    hover: hovered,
                     onChanged: field.didChange,
                   ),
                 ),

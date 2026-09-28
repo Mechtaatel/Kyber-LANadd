@@ -1,6 +1,7 @@
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/material.dart' as mt;
 import 'package:kyber_launcher/core/config/colors.dart';
+import 'package:kyber_launcher/core/services/launcher_version_label.dart';
 import 'package:kyber_launcher/features/settings/screens/aaa.dart';
 import 'package:kyber_launcher/features/settings/screens/pages/accounts_and_updates.dart';
 import 'package:kyber_launcher/features/settings/screens/pages/language_and_accessibility.dart';
@@ -10,7 +11,6 @@ import 'package:kyber_launcher/features/settings/screens/pages/proximity_chat.da
 import 'package:kyber_launcher/gen/assets.gen.dart';
 import 'package:kyber_launcher/gen/fonts.gen.dart';
 import 'package:kyber_launcher/shared/ui/ui.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 
 class SettingsList extends StatefulWidget {
   const SettingsList({this.initialIndex, super.key});
@@ -22,6 +22,7 @@ class SettingsList extends StatefulWidget {
 }
 
 class _SettingsListState extends State<SettingsList> {
+  late final Future<String> _versionLabel = getLauncherVersionLabel();
   final horizontalLength = 3;
   final verticalLength = 2;
   int? selectedIndex;
@@ -145,6 +146,7 @@ class _SettingsListState extends State<SettingsList> {
           child: Container(
             alignment: Alignment.center,
             width: 220,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(
               border: Border.all(
                 color: decoColor,
@@ -152,25 +154,21 @@ class _SettingsListState extends State<SettingsList> {
               ),
               borderRadius: BorderRadius.circular(kDefaultInnerBorderRadius),
             ),
-            child: FutureBuilder(
-              future: PackageInfo.fromPlatform(),
+            child: FutureBuilder<String>(
+              future: _versionLabel,
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
                   return const SizedBox.shrink();
                 }
 
-                if (snapshot.data?.version == null) {
-                  return const SizedBox.shrink();
-                }
-
                 return Text(
-                  'VERSION: ${snapshot.data?.version}#CL${snapshot.data?.buildNumber}',
+                  snapshot.data!,
                   style: const TextStyle(
                     fontFamily: FontFamily.iBMPlexMono,
                     fontSize: 13,
                     color: Colors.white,
                   ),
-                  maxLines: 1,
+                  textAlign: TextAlign.center,
                 );
               },
             ),

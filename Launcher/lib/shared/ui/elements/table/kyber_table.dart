@@ -19,7 +19,7 @@ class _KyberTableState extends State<KyberTable> {
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = kInactiveColor.withOpacity(.4);
+    final theme = FluentTheme.of(context);
     final convertedStyle = const TextStyle(
       color: Colors.white,
       fontSize: 20,
@@ -30,10 +30,10 @@ class _KyberTableState extends State<KyberTable> {
     return SizedBox(
       width: 200,
       child: FluentTheme(
-        data: FluentThemeData(
-          typography: FluentTheme.of(
-            context,
-          ).typography.merge(Typography.raw(body: convertedStyle)),
+        data: theme.copyWith(
+          typography: theme.typography.merge(
+            Typography.raw(body: convertedStyle),
+          ),
         ),
         child: ListView.separated(
           itemCount: widget.items.length + 2,

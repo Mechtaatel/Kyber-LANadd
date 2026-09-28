@@ -7,6 +7,7 @@ import 'package:kyber/kyber.dart';
 import 'package:kyber_collection/kyber_collection.dart';
 import 'package:kyber_launcher/core/services/app_settings.dart';
 import 'package:kyber_launcher/core/services/module_version_service.dart';
+import 'package:kyber_launcher/core/services/module_launch_directory.dart';
 import 'package:kyber_launcher/core/services/notification_service.dart';
 import 'package:kyber_launcher/core/services/windows_env.dart';
 import 'package:kyber_launcher/features/frosty/dialogs/frosty_pack_selector_dialog.dart';
@@ -49,7 +50,8 @@ class MaximaHelper {
     if (modCollection != null) {
       if (modCollection.getLocalMods().contains(null)) {
         NotificationService.error(
-          message: 'Some mods in your collection are missing. Please check your mod collection.',
+          message:
+              'Some mods in your collection are missing. Please check your mod collection.',
         );
         return;
       }
@@ -144,9 +146,38 @@ class MaximaHelper {
       throw Exception('PATH environment variable is not set');
     }
 
+    var moduleDirectory = FileHelper.getModuleDirectory();
+    final missingFiles = <String>[];
+    for (final name in [
+      'Kyber.dll',
+      'vivoxsdk.dll',
+      'ca_root.pem',
+      'VanillaBundleAggregation.kb',
+    ]) {
+      final file = File(p.join(moduleDirectory.path, name));
+      if (!await file.exists() || await file.length() == 0) {
+        missingFiles.add(name);
+      }
+    }
+    if (missingFiles.isNotEmpty) {
+      throw StateError(
+        'Kyber module files are missing or empty: ${missingFiles.join(', ')}. '
+        'Restore the complete launcher package. Module folder: ${moduleDirectory.path}',
+      );
+    }
+    if (Platform.isWindows) {
+      moduleDirectory = await prepareModuleLaunchDirectory(moduleDirectory);
+    }
+    final moduleVersion =
+        (await VersionModule.module.getCurrentVersion())?.trim() ?? 'unknown';
+    _logger.info(
+      'Game module: ${p.join(moduleDirectory.path, 'Kyber.dll')}; '
+      'version: $moduleVersion; selected mods: ${mods?.length ?? 0}',
+    );
+
     final grpcDebug = Preferences.debug.grpcDebugLogs;
     final moduleDebug = Preferences.debug.moduleDebugLogs;
-    final newPath = '$path;${FileHelper.getModuleDirectory().path}';
+    final newPath = '$path;${moduleDirectory.path}';
     final interfacePort = await KyberNetworkHelper.findAvailablePort();
     final lanOnly =
         LanMode.enabled ||
@@ -164,7 +195,7 @@ class MaximaHelper {
     ProcessEnv.set('KYBER_API_TOKEN', kToken);
     ProcessEnv.set(
       'KYBER_MODULE_VERSION',
-      (await VersionModule.module.getCurrentVersion()) ?? 'local',
+      moduleVersion,
     );
     ProcessEnv.set('KYBER_INTERFACE_PORT', interfacePort.toString());
     ProcessEnv.set(
@@ -224,7 +255,7 @@ class MaximaHelper {
           .firstWhere((e) => e == 'RequestLicense');
       await maxima.injectKyber(
         pid: gamePID,
-        path: p.join(FileHelper.getModuleDirectory().path, 'Kyber.dll'),
+        path: p.join(moduleDirectory.path, 'Kyber.dll'),
       );
     } catch (e) {
       if (e is AnyhowException) {

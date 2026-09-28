@@ -399,6 +399,7 @@ class _ModSelectorState extends State<ModSelector> {
                                             controller: controller,
                                             readOnly: true,
                                             style: const mt.TextStyle(
+                                              color: kWhiteColor,
                                               fontFamily:
                                                   FontFamily.battlefrontUI,
                                               fontSize: 16,

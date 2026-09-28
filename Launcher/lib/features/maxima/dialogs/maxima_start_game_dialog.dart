@@ -17,7 +17,6 @@ import 'package:kyber_launcher/features/maxima/dialogs/maxima_game_not_found_dia
 import 'package:kyber_launcher/features/maxima/helper/maxima_helper.dart';
 import 'package:kyber_launcher/features/mods/helper/preloaded_mods_helper.dart';
 import 'package:kyber_launcher/gen/fonts.gen.dart';
-import 'package:kyber_launcher/gen/rust/api/maxima.dart';
 import 'package:kyber_launcher/shared/ui/buttons/button.dart';
 import 'package:kyber_launcher/shared/ui/dialog/kyber_dialog.dart';
 import 'package:logging/logging.dart';

@@ -12,7 +12,9 @@ class EnvHelper {
       throw Exception('PATH environment variable is not set');
     }
 
-    final newPath = '$path;${customPath ?? FileHelper.getModuleDirectory().path}';
+    final separator = Platform.isWindows ? ';' : ':';
+    final newPath =
+        '$path$separator${customPath ?? FileHelper.getModuleDirectory().path}';
     Env.set('PATH', newPath);
   }
 }

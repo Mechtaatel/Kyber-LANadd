@@ -21,6 +21,7 @@ class ServerListCubit extends Cubit<ServerListState> {
   bool _needsUpdate = false;
   int _page = 1;
   int _loadGeneration = 0;
+  final _publicCache = PublicServerCache();
 
   ServerListCubit() : super(const ServerListInitial()) {
     filter = ServerFilter();
@@ -135,14 +136,18 @@ class ServerListCubit extends Cubit<ServerListState> {
   Future<void> loadServers() async {
     if (isClosed) return;
     final generation = ++_loadGeneration;
-    emit(ServerListLoading(page: _page, pages: state.pages));
+    // Background refresh must not blank the visible list.
+    if (state is! ServerListLoaded) {
+      emit(ServerListLoading(page: _page, pages: state.pages, filter: filter));
+    }
 
     _needsUpdate = false;
 
     final lanFuture = LanDiscovery().discover();
-    ServerList servers;
+    ServerList? servers;
+    String? warning;
     try {
-      servers = LanMode.enabled || filter.region == ServerRegion.lan
+      servers = LanMode.enabled
           ? ServerList()
           : await sl
                 .get<KyberGRPCService>()
@@ -150,43 +155,19 @@ class ServerListCubit extends Cubit<ServerListState> {
                 .getServers(ServerListRequest())
                 .timeout(const Duration(seconds: 4));
     } catch (_) {
-      servers = ServerList();
+      warning =
+          'Kyber is unavailable. Public listings may be up to 2 minutes old; LAN discovery is live.';
     }
     final localServers = await lanFuture;
     if (isClosed || generation != _loadGeneration) return;
-    final s = servers.servers.map((e) {
-      return Server(
-        id: e.id,
-        mods: e.mods,
-        name: e.name,
-        levelSetup: e.levelSetup,
-        port: e.port,
-        description: e.description,
-        creator: e.creator,
-        requiresPassword: e.requiresPassword,
-        official: e.official,
-        ip: e.ip,
-        maxPlayerCount: e.maxPlayerCount,
-        playerCount: e.playerCount,
-        requiresProxy: e.requiresProxy,
-        region: e.region,
-        mapImageHash: e.mapImageHash,
-        meta: e.meta.entries,
-      );
-    }).toList();
+    final s = _publicCache.resolve(servers?.servers, now: DateTime.now());
 
     for (final local in localServers) {
       if (LanMode.enabled && !local.isLanOnly) continue;
       final index = s.indexWhere((server) => server.id == local.id);
       if (index >= 0) {
         // Keep trusted official/friend metadata, prefer the discovered LAN route.
-        s[index]
-          ..ip = local.ip
-          ..port = local.port
-          ..region = 'LAN'
-          ..requiresProxy = false;
-        s[index].meta.remove('persisted_id');
-        s[index].meta['lan_only'] = '0';
+        s[index] = LanDiscovery.preferLan(s[index], local);
       } else {
         s.add(local);
       }
@@ -359,6 +340,7 @@ class ServerListCubit extends Cubit<ServerListState> {
         page: _page,
         pages: pages,
         filter: filter,
+        warning: warning,
       ),
     );
   }

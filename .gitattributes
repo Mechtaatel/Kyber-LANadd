@@ -1,3 +1,5 @@
 ThirdParty/** linguist-vendored
 Module/ThirdParty/** linguist-vendored
 CLI/ThirdParty/** linguist-vendored
+CLI/tool/*.sh text eol=lf
+CLI/patches/*.patch text eol=lf

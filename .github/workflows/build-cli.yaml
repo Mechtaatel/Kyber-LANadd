@@ -86,7 +86,7 @@ jobs:
         working-directory: ${{env.working-directory}}
 
       - name: Install FRB-Codegen
-        run: cargo install flutter_rust_bridge_codegen@^2.11.0
+        run: cargo install flutter_rust_bridge_codegen --version 2.11.1 --locked
         working-directory: ${{env.working-directory}}
 
       - name: Create gen folder
@@ -100,8 +100,12 @@ jobs:
         working-directory: ${{env.working-directory}}
 
       - name: Generate Files
-        run: flutter_rust_bridge_codegen generate
+        run: flutter_rust_bridge_codegen generate --no-auto-upgrade-dependency
         working-directory: ${{env.working-directory}}
+
+      - name: Apply Maxima Linux compatibility patch
+        working-directory: ./CLI
+        run: dart tool/prepare_maxima.dart
 
       - name: Build rust library
         working-directory: ./CLI/rust
@@ -130,7 +134,9 @@ jobs:
         working-directory: ${{env.working-directory}}
 
       - name: Build CLI
-        run: dart build cli bin/kyber_cli.dart
+        run: |
+          dart tool/check_frb_version.dart
+          dart build cli --target=bin/kyber_cli.dart
         working-directory: ${{env.working-directory}}
 
       - name: Download Maxima Wine Helper

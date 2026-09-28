@@ -7,14 +7,22 @@ class ModHelper {
   ModHelper._();
 
   static List<FrostyMod> filterGameplayMods(List<FrostyMod> mods) {
-    return mods.where((mod) => ['gameplay', 'maps', 'map'].contains(mod.details.category.toLowerCase())).toList();
+    return mods
+        .where(
+          (mod) => [
+            'gameplay',
+            'maps',
+            'map',
+          ].contains(mod.details.category.toLowerCase()),
+        )
+        .toList();
   }
 
   static List<FrostyMod> expandMods(List<FrostyMod> mods) {
-    final mods = <FrostyMod>[];
+    final expanded = <FrostyMod>[];
     for (final mod in mods) {
       if (!mod.isCollection) {
-        mods.add(mod);
+        expanded.add(mod);
       } else {
         for (final modPath in getCollectionMods(mod)) {
           final mod = File(modPath);
@@ -27,12 +35,12 @@ class ModHelper {
             continue;
           }
 
-          mods.add(frostyMod);
+          expanded.add(frostyMod);
         }
       }
     }
 
-    return mods;
+    return expanded;
   }
 
   static List<String> getCollectionMods(FrostyMod mod) {
@@ -41,7 +49,14 @@ class ModHelper {
       return mod.mods ?? [];
     }
 
-    return mod.mods?.map((e) => join(dirname(mod.filename), e)).toList() ?? [];
+    return mod.mods
+            ?.map(
+              (path) => normalize(
+                join(dirname(mod.filename), path.replaceAll('\\', '/')),
+              ),
+            )
+            .toList() ??
+        [];
   }
 
   static List<FrostyMod> readFrostyMods(List<String> modPaths) {

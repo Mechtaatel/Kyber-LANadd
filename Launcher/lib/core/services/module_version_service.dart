@@ -141,6 +141,14 @@ class ModuleVersionService {
     String? channel,
     KyberGRPCService? service,
   }) async {
+    // The standalone fork bundle carries its own pinned LAN module and must
+    // never offer the upstream launcher installer for this executable.
+    if (module == VersionModule.installer && FileHelper.hasPinnedLanModule) {
+      return false;
+    }
+    if (module == VersionModule.module && FileHelper.hasPinnedLanModule) {
+      return false;
+    }
     if (Platform.isMacOS && module == VersionModule.installer) {
       return false;
     }
@@ -208,6 +216,18 @@ class ModuleVersionService {
     KyberGRPCService? service,
     void Function(int, int)? onProgress,
   }) async {
+    if (module == VersionModule.installer && FileHelper.hasPinnedLanModule) {
+      _logger.info(
+        'Skipping upstream launcher updates for the bundled LAN fork.',
+      );
+      return;
+    }
+    if (module == VersionModule.module && FileHelper.hasPinnedLanModule) {
+      _logger.info(
+        'Keeping bundled LAN module; upstream module updates are disabled for this bundle.',
+      );
+      return;
+    }
     if (!kReleaseMode && module == VersionModule.installer) {
       return;
     }

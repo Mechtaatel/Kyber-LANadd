@@ -28,9 +28,11 @@ class ServerListLoaded extends ServerListState {
     required this.page,
     required this.pages,
     required this.filter,
+    this.warning,
   });
 
   final ServerFilter filter;
+  final String? warning;
 
   final List<Object> servers;
   final int page;

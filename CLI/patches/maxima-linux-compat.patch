@@ -1,0 +1,112 @@
+diff --git a/maxima-lib/src/core/launch.rs b/maxima-lib/src/core/launch.rs
+--- a/maxima-lib/src/core/launch.rs
++++ b/maxima-lib/src/core/launch.rs
+@@ -188,6 +188,18 @@ pub async fn start_game(
+         }
+     }
+
++    // An explicit executable path is authoritative when the game is mounted
++    // outside EA's registry. Validate it before bypassing the install check;
++    // online authentication and license handling remain unchanged.
++    if let Some(ref game_path_override) = options.path_override {
++        let path = PathBuf::from(game_path_override);
++        #[cfg(unix)]
++        let path = case_insensitive_path(path);
++        if !path.is_file() {
++            return Err(LaunchError::GamePath);
++        }
++    }
++
+     let (content_id, online_offline, offer, access_token) =
+         if let LaunchMode::Online(ref offer_id) = mode {
+             let access_token = &maxima.access_token().await?;
+@@ -196,7 +208,7 @@ pub async fn start_game(
+                 None => return Err(LaunchError::NoOfferFound(offer_id.clone())),
+             };
+
+-            if !offer.is_installed().await {
++            if options.path_override.is_none() && !offer.is_installed().await {
+                 return Err(LaunchError::NotInstalled(offer.offer_id().clone()));
+             }
+
+@@ -312,7 +324,7 @@ pub async fn start_game(
+     let launch_id = Uuid::new_v4().to_string();
+ 
+     child
+-        .current_dir(PathBuf::from(path).safe_parent()?)
++        .current_dir(&dir)
+         .env("MXLaunchId", launch_id.to_owned())
+         .env("EAAuthCode", "unavailable")
+         .env("EAEgsProxyIpcPort", "0")
+@@ -367,7 +379,7 @@ pub async fn start_game(
+ 
+     maxima.playing = Some(ActiveGameContext::new(
+         &launch_id,
+-        dir,
++        &path,
+         options.cloud_saves,
+         &content_id,
+         offer,
+diff --git a/maxima-lib/src/lsx/connection.rs b/maxima-lib/src/lsx/connection.rs
+--- a/maxima-lib/src/lsx/connection.rs
++++ b/maxima-lib/src/lsx/connection.rs
+@@ -10,7 +10,7 @@ use std::{
+     sync::Arc,
+     time::Duration,
+ };
+-use sysinfo::{Pid, PidExt, ProcessExt, System, SystemExt};
++use sysinfo::{PidExt, ProcessExt, System, SystemExt};
+ use thiserror::Error;
+ use tokio::sync::{MutexGuard, RwLock};
+ 
+@@ -219,32 +219,24 @@ impl Connection {
+         };
+ 
+         // The PID system is mainly for Kyber injection
+-        let mut pid = get_os_pid(context);
+-        if cfg!(unix) {
+-            if let Ok(os_pid) = pid {
+-                let sys = System::new_all();
+-                if let Some(process) = sys.process(Pid::from_u32(os_pid)) {
+-                    let filename = PathBuf::from(
+-                        process.cmd()[0]
+-                            .to_owned()
+-                            .replace("Z:", "")
+-                            .replace('\\', "/"),
+-                    )
+-                    .file_name()
+-                    .ok_or(NativeError::FileName)?
+-                    .to_str()
+-                    .ok_or(NativeError::Stringify)?
+-                    .to_owned();
+-
+-                    pid = get_wine_pid(&context.launch_id(), &filename).await;
+-                } else {
+-                    warn!(
+-                        "Failed to find game process while looking for PID {}",
+-                        os_pid
+-                    );
+-                }
+-            }
+-        }
++        #[cfg(target_os = "linux")]
++        let pid = {
++            // Wine-created processes do not reliably expose their Windows
++            // command line or launch environment through Linux process APIs.
++            // We already know the exact executable and launch ID, so ask the
++            // Wine helper directly instead of guessing from /proc.
++            let filename = PathBuf::from(context.game_path())
++                .file_name()
++                .ok_or(NativeError::FileName)?
++                .to_str()
++                .ok_or(NativeError::Stringify)?
++                .to_owned();
++
++            get_wine_pid(&context.launch_id(), &filename).await
++        };
++
++        #[cfg(not(target_os = "linux"))]
++        let pid = get_os_pid(context);
+ 
+         if let Err(ref err) = pid {
+             warn!("Error while finding game PID: {}", err);

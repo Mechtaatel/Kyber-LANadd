@@ -48,6 +48,43 @@ From the launcher directory, run:
 flutter build <platform>
 ```
 
+If the Windows workspace path contains parentheses (for example, under Program
+Files x86), first run `tools/prepare-windows-build.ps1` from the repository root.
+It adjusts generated Cargokit batch files so native plugin builds handle that
+path correctly. Run `flutter pub get` in Launcher before this step.
+
+For this fork's Windows LAN launcher, Kyber.dll and Linux CLI release archives,
+run one command from the repository root in PowerShell:
+
+```powershell
+./tools/build-lan-release.ps1
+```
+
+The script uses build caches on D:, verifies the FRB versions and reused CLI
+inputs first, builds Kyber.dll once and copies that same binary into both
+packages, builds the launcher, and writes a new pair of ZIPs
+under `artifacts/`. Use `-ResolveDependencies` after dependency changes and
+`-RebuildCli` after CLI/Rust changes. Add `-RegenerateBindings` when changing
+the Rust API exposed through FRB; Dart-only changes reuse the existing bindings.
+If a CLI build stopped after Rust completed, resume with `-RebuildCli
+-SkipCliRustBuild` only when the prebuilt Rust library still matches the Rust
+and Maxima sources. This skips Cargo but rebuilds the Dart executable.
+If DLL compilation has already completed,
+resume with `-SkipDllBuild`. If the launcher also completed and only packaging
+needs to be repeated, add `-SkipLauncherBuild`. These explicit resume switches
+reuse existing outputs; use them only if the corresponding sources have not
+changed. Package DLL copies are checked against the source DLL's SHA256.
+Each bundle includes `release-manifest.json` and `SHA256SUMS`; Linux bundles
+also include `diagnose-linux.sh`. The manifest records
+packaging provenance, not proof of an in-game test. Override path parameters if
+your tool or Maxima installation differs. It never overwrites an existing
+release directory.
+
+For Windows-to-Linux CLI cross-builds the script compiles Rust in a short path
+under ToolsRoot, then passes the compiled library into Dart's native build hook.
+This avoids Zig's linker failure when Cargo places archives under a workspace
+path containing spaces. The temporary hook configuration is removed after use.
+
 ### Building the Installer
 
 To build the installer on Windows, you can use [Inno Setup](https://jrsoftware.org/isinfo.php) with the provided `installer.iss` script located in the `installer` folder.
@@ -59,17 +96,26 @@ To build the installer on Windows, you can use [Inno Setup](https://jrsoftware.o
 ```bash
 cd CLI
 flutter pub get
+dart tool/prepare_maxima.dart
 flutter_rust_bridge_codegen generate
 dart build cli bin/kyber_cli.dart
 ```
 
 This will output the binary to `build/cli/<platform>/bundle/bin/`.
 
+The CLI carries its Linux launch/PID compatibility fix in `CLI/patches/`. The preparation step
+applies it idempotently to the pinned submodule and fails on conflicting local
+edits. The Dart native build hook and CI also apply it automatically. Seeing
+this submodule as modified after building is expected; the tracked patch is the
+reproducible source of those changes. No upstream submodule commit is required.
+
 ### Using the Built CLI
 
 To run the CLI, make sure to copy the rust library from `build/cli/<platform>/bundle/lib/` next to the binary.
 
-**Important:** Make sure to build Maxima first. Then depending on your platform, copy the following files next to the binary from the Maxima build output:
+The `maxima-lib` library is linked into `librust_lib`; there is no separate
+Maxima application to install for the CLI. Build its bootstrap/helper binaries
+first, then copy the following files next to the CLI binary:
 
 #### Windows
 - `maxima-service.exe`
@@ -77,6 +123,7 @@ To run the CLI, make sure to copy the rust library from `build/cli/<platform>/bu
 
 #### Linux
 - `maxima-bootstrap`
+- `wine-helper.exe` (Maxima's Windows process/injection helper)
 
 ------
 

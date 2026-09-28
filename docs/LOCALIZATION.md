@@ -17,9 +17,4 @@ The codec handles Cyrillic (including Ё/ё), other scripts and UTF-16 surrogate
 pairs. This fixes text encoding, not missing glyphs in a custom font. It does not
 guarantee that a particular localization mod supplies compatible font resources.
 
-Run `tools\run-localization-tests.cmd` from Windows with Visual C++ Build Tools
-2022 installed, or from a Visual Studio developer command prompt. The standalone
-test covers Cyrillic, CJK, Greek, surrogate pairs, original text preservation,
-repeated merges, all supported prefix pages, capacity and malformed input.
-
 The exact user-reported Russian mod has not been supplied or tested in-game.

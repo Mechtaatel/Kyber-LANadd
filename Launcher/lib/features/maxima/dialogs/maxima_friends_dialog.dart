@@ -249,6 +249,7 @@ class MaximaFriendsDialog extends StatelessWidget {
                               height: 35,
                               child: mt.TextField(
                                 style: const mt.TextStyle(
+                                  color: kWhiteColor,
                                   fontFamily: FontFamily.battlefrontUI,
                                   fontSize: 16,
                                   height: 1,

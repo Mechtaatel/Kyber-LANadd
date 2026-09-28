@@ -45,7 +45,16 @@ class _ServerListState extends State<ServerListWidget> {
         }
 
         if (state is ServerListLoaded) {
-          return const RepaintBoundary(child: TableServerList());
+          return Column(
+            children: [
+              if (state.warning != null)
+                InfoBar(
+                  title: Text(state.warning!),
+                  severity: InfoBarSeverity.warning,
+                ),
+              const Expanded(child: RepaintBoundary(child: TableServerList())),
+            ],
+          );
         }
 
         if (state is ServerListError) {

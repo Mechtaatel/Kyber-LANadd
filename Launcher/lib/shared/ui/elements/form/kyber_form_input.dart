@@ -54,6 +54,7 @@ class KyberFormInputField extends StatelessWidget {
           focusNode: focusNode,
           controller: controller,
           style: const mt.TextStyle(
+            color: kWhiteColor,
             fontFamily: FontFamily.battlefrontUI,
             fontSize: 15,
             height: 1,

@@ -5,6 +5,7 @@
 #include <Base/Log.h>
 #include <Core/Program.h>
 #include <Network/SocketManager.h>
+#include <Network/LanAddress.h>
 #include <Utilities/ErrorUtils.h>
 #include <Utilities/PlatformUtils.h>
 #include <Utilities/StringUtils.h>
@@ -164,15 +165,10 @@ int UDPSocket::ReceiveFrom(uint8_t* buffer, int bufferSize)
             return recvSize;
         }
 
-        if (m_direction == ProtocolDirection::Clientbound && !g_program->m_server->m_onlineMode)
+        if (m_direction == ProtocolDirection::Clientbound && !g_program->m_server->m_onlineMode &&
+            !IsLanPeer(addr.sin_addr.s_addr))
         {
-            const uint32_t ip = ntohl(addr.sin_addr.s_addr);
-            const bool local = (ip >> 24) == 10 || (ip >> 24) == 127 ||
-                (ip >> 20) == 0xac1 || (ip >> 16) == 0xc0a8 || (ip >> 16) == 0xa9fe;
-            if (!local)
-            {
-                return -1;
-            }
+            return -1;
         }
     }
     else

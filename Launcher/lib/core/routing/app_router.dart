@@ -306,6 +306,7 @@ final router = GoRouter(
           redirect: (context, state) async {
             // temp fix
             await sl.isReady<ModService>();
+            return null;
           },
           pageBuilder: (context, state) {
             return buildCustomPage(

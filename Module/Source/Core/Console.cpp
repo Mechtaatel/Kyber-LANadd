@@ -16,6 +16,7 @@
 
 #include <EASTL/fixed_map.h>
 
+#include <cstring>
 #include <iostream>
 
 using namespace fastdelegate;
@@ -302,6 +303,66 @@ void SetTeamByIdCommand(ConsoleContext& cc)
 
     player->SetTeam(team);
     cc << "Set " << player->m_name << " to team " << team;
+}
+
+static ServerPlayer* FindHumanPlayerByName(const std::string& name)
+{
+    ServerPlayerManager* manager = g_program->m_server->m_playerManager;
+    if (manager == nullptr)
+        return nullptr;
+    for (ServerPlayer* player : manager->m_players)
+        if (player != nullptr && !player->IsAIPlayer() && player->m_name != nullptr &&
+            std::strcmp(player->m_name, name.c_str()) == 0)
+            return player;
+    for (ServerPlayer* player : manager->m_spectators)
+        if (player != nullptr && !player->IsAIPlayer() && player->m_name != nullptr &&
+            std::strcmp(player->m_name, name.c_str()) == 0)
+            return player;
+    return nullptr;
+}
+
+// LAN players do not have Kyber account IDs; names must be matched exactly.
+void SetTeamByNameCommand(ConsoleContext& cc)
+{
+    if (!g_program->m_server->IsRunning() || cc.rawArguments == nullptr)
+        return;
+    const std::string arguments(cc.rawArguments);
+    const size_t separator = arguments.find_last_of(' ');
+    if (separator == std::string::npos || separator == 0)
+    {
+        cc << "Usage: Kyber.SetTeamByName <player name> <1|2>";
+        return;
+    }
+    const std::string teamText = arguments.substr(separator + 1);
+    if (teamText != "1" && teamText != "2")
+    {
+        cc << "Team must be 1 or 2";
+        return;
+    }
+    const std::string name = arguments.substr(0, separator);
+    ServerPlayer* player = FindHumanPlayerByName(name);
+    if (player == nullptr)
+    {
+        cc << "Couldn't find player " << name;
+        return;
+    }
+    player->SetTeam(teamText == "1" ? 1 : 2);
+    cc << "Set " << name << " to team " << teamText;
+}
+
+void KickByNameCommand(ConsoleContext& cc)
+{
+    if (!g_program->m_server->IsRunning() || cc.rawArguments == nullptr)
+        return;
+    const std::string name(cc.rawArguments);
+    ServerPlayer* player = FindHumanPlayerByName(name);
+    if (player == nullptr)
+    {
+        cc << "Couldn't find player " << name;
+        return;
+    }
+    g_program->m_server->KickPlayer(player, "Kicked by LAN host");
+    cc << "Kicked " << name;
 }
 
 void FullTeamSwapCommand(ConsoleContext& cc)
@@ -607,6 +668,8 @@ Console::Console()
     RegisterConsoleCommand(&SetTeamCommand, "SetTeam", "<player> <team>");
     RegisterConsoleCommand(&SetTeamByIndexCommand, "SetTeamByIndex", "<playerIndex> <team>");
     RegisterConsoleCommand(&SetTeamByIdCommand, "SetTeamById", "<playerId> <team>");
+    RegisterConsoleCommand(&SetTeamByNameCommand, "SetTeamByName", "<player name> <team>");
+    RegisterConsoleCommand(&KickByNameCommand, "KickByName", "<player name>");
     RegisterConsoleCommand(&FullTeamSwapCommand, "FullTeamSwap");
     RegisterConsoleCommand(&ShuffleTeamsCommand, "ShuffleTeams");
     RegisterConsoleCommand(&TeleportCommand, "Teleport", "<player> <x> <y> <z>");

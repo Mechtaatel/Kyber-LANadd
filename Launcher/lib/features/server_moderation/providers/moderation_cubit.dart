@@ -30,6 +30,7 @@ class ModerationCubit extends Cubit<ModerationServerState> {
 
   final _logger = Logger('moderation_cubit');
   Timer? _keepAliveTimer;
+  Timer? _localPollTimer;
 
   ReplaySubject<(int, int)>? botChangeStream;
 
@@ -131,12 +132,39 @@ class ModerationCubit extends Cubit<ModerationServerState> {
     _logger.info('Swapping team for player ${player.id}');
 
     final team = player.teamId == 1 ? 2 : 1;
+    if (state.server?.isLanOnly == true) {
+      if (_unsafeConsoleName(player.name)) {
+        NotificationService.error(message: 'Invalid LAN player name');
+        return;
+      }
+      sendCommand('/Kyber.SetTeamByName ${player.name} $team');
+      return;
+    }
     sendCommand('/Kyber.SetTeamById ${player.id} $team');
   }
 
-  Future<void> kickPlayer(String id, {String? reason = 'Kicked by moderator'}) {
+  static bool _unsafeConsoleName(String name) =>
+      name.isEmpty || name.contains(RegExp(r'[\r\n;]'));
+
+  Future<void> kickPlayer(
+    String id, {
+    String? reason = 'Kicked by moderator',
+    String? playerName,
+  }) async {
     _logger.info('Kicking player $id');
-    return sl.get<KyberGRPCService>().serverManagementClient.kickPlayer(
+    if (state.server?.isLanOnly == true) {
+      final name =
+          playerName ??
+          state.players.where((player) => player.id == id).firstOrNull?.name;
+      if (name == null || _unsafeConsoleName(name)) {
+        throw ArgumentError('Invalid LAN player name');
+      }
+      await sl.get<MaximaGameInstance>().clientService.commonClient.runCommand(
+        RunCommandRequest(command: 'Kyber.KickByName $name'),
+      );
+      return;
+    }
+    await sl.get<KyberGRPCService>().serverManagementClient.kickPlayer(
       ServerKickPlayerRequest(
         id: state.id,
         userId: id,
@@ -156,6 +184,11 @@ class ModerationCubit extends Cubit<ModerationServerState> {
     };
 
     _logger.info('Sending command: $command');
+    if (state.server?.isLanOnly == true) {
+      emit(state.copyWith(commands: [...state.commands, '> $command']));
+      unawaited(_runLocalCommand(command));
+      return;
+    }
     sl.get<KyberGRPCService>().serverManagementClient.runCommand(
       ServerRunCommandRequest(
         id: state.id,
@@ -164,11 +197,23 @@ class ModerationCubit extends Cubit<ModerationServerState> {
     );
   }
 
+  Future<void> _runLocalCommand(String command) async {
+    try {
+      await sl.get<MaximaGameInstance>().clientService.commonClient.runCommand(
+        RunCommandRequest(command: command),
+      );
+    } catch (e, s) {
+      _logger.severe('Failed to send LAN command', e, s);
+      NotificationService.error(message: 'Failed to send LAN command: $e');
+    }
+  }
+
   void unloadServer() {
     _logger.info('Unloading server');
 
     _channel?.sink.close();
     _keepAliveTimer?.cancel();
+    _localPollTimer?.cancel();
 
     emit(const ModerationServerState());
 
@@ -188,6 +233,22 @@ class ModerationCubit extends Cubit<ModerationServerState> {
 
     await _channel?.sink.close();
     _keepAliveTimer?.cancel();
+    _localPollTimer?.cancel();
+
+    if (state.server?.isLanOnly == true) {
+      final server = state.server!;
+      emit(state.copyWith(id: server.id, selected: true, commands: []));
+      hostingForm.currentState?.fields['serverName']?.didChange(server.name);
+      await _refreshLocalServer();
+      if (isClosed || state.server?.isLanOnly != true || !state.selected) {
+        return;
+      }
+      _localPollTimer = Timer.periodic(
+        const Duration(seconds: 2),
+        (_) => _refreshLocalServer(),
+      );
+      return;
+    }
 
     try {
       final id = serverId ?? state.id;
@@ -307,6 +368,41 @@ class ModerationCubit extends Cubit<ModerationServerState> {
         severity: InfoBarSeverity.error,
       );
       unloadServer();
+    }
+  }
+
+  Future<void> _refreshLocalServer() async {
+    if (isClosed ||
+        state.server?.isLanOnly != true ||
+        !state.selected ||
+        !sl.isRegistered<MaximaGameInstance>()) {
+      return;
+    }
+    try {
+      final info = await sl
+          .get<MaximaGameInstance>()
+          .clientService
+          .commonClient
+          .getInfo(Empty())
+          .timeout(const Duration(seconds: 3));
+      if (isClosed || state.server?.isLanOnly != true || !state.selected) {
+        return;
+      }
+      if (!info.hasServer() || info.server.id != state.id) {
+        unloadServer();
+        return;
+      }
+      final server = Server.fromBuffer(state.server!.writeToBuffer())
+        ..playerCount = info.server.playerList.length
+        ..levelSetup = info.server.levelSetup;
+      emit(
+        state.copyWith(
+          server: server,
+          players: info.server.playerList.toList(),
+        ),
+      );
+    } catch (e, s) {
+      _logger.warning('Failed to refresh LAN players', e, s);
     }
   }
 }

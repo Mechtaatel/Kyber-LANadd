@@ -1,9 +1,11 @@
 // Copyright Armchair Developers. Licensed under GPLv3.
 #include <Core/Program.h>
 #include <Core/Server.h>
+#include <Network/LanAddress.h>
 #include <Utilities/PlatformUtils.h>
 #include <ws2tcpip.h>
 #include <cstring>
+#include <unordered_map>
 
 namespace Kyber
 {
@@ -11,13 +13,6 @@ namespace Kyber
 static constexpr char kLanMagic[] = "KYBER-LAN-1:";
 static constexpr int kQuerySize = sizeof(kLanMagic) - 1 + 16;
 static constexpr uint16_t kDiscoveryPort = 25202;
-
-static bool IsLocalAddress(uint32_t address)
-{
-    const uint32_t ip = ntohl(address);
-    return (ip >> 24) == 10 || (ip >> 24) == 127 || (ip >> 20) == 0xac1 ||
-           (ip >> 16) == 0xc0a8 || (ip >> 16) == 0xa9fe;
-}
 
 void Server::CloseLanDiscovery()
 {
@@ -65,6 +60,20 @@ void Server::PollLanDiscovery()
         KYBER_LOG(Info, "[LAN] Discovery listening on UDP 25202");
     }
 
+    // Rate limit per source: one adapter/client must not starve all others.
+    static std::unordered_map<uint32_t, uint64_t> lastReplies;
+    const auto now = GetTickCount64();
+    for (auto it = lastReplies.begin(); it != lastReplies.end();)
+    {
+        if (now - it->second > 1000)
+        {
+            it = lastReplies.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
     // Bound work on the game thread and limit discovery response amplification.
     for (int i = 0; i < 8; ++i)
     {
@@ -78,13 +87,19 @@ void Server::PollLanDiscovery()
             return;
         }
         if (length != kQuerySize || std::memcmp(query, kLanMagic, sizeof(kLanMagic) - 1) != 0 ||
-            !IsLocalAddress(peer.sin_addr.s_addr) || GetTickCount64() < m_lanNextResponse)
+            !IsLanPeer(peer.sin_addr.s_addr))
         {
             continue;
         }
-        m_lanNextResponse = GetTickCount64() + 50;
+        const auto previous = lastReplies.find(peer.sin_addr.s_addr);
+        if ((previous != lastReplies.end() && now - previous->second < 50) ||
+            (previous == lastReplies.end() && lastReplies.size() >= 256))
+        {
+            continue;
+        }
+        lastReplies[peer.sin_addr.s_addr] = now;
         kyber_api::Server server;
-        server.set_id(m_onlineMode ? m_serverId : "lan:" + std::to_string(GetCurrentProcessId()));
+        server.set_id(m_serverId);
         server.set_name(m_creationInfo->name);
         server.set_description(m_creationInfo->description);
         server.set_creator("LAN host");

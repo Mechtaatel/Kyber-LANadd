@@ -40,11 +40,20 @@ inline void Write32(Bytes& data, size_t offset, uint32_t value)
 
 inline std::vector<uint16_t> ReadHistogram(const Bytes& data)
 {
-    const size_t size = Read32(data, 4);
-    if (data.size() < 12 || size % 2 != 0 || size > data.size() - 12 || size < 512)
+    if (data.size() < 12 || Read32(data, 0) != 0x00039001)
     {
-        throw std::runtime_error("Invalid localization histogram size");
+        throw std::runtime_error("Invalid localization histogram header");
     }
+    // Frostbite stores the chunk size excluding its first eight bytes, just
+    // like the binary chunk. The remaining four header bytes are NOT entries.
+    // Treating this as the table size rejects a valid chunk by four bytes.
+    const size_t declaredSize = Read32(data, 4);
+    if (declaredSize < 4 + 512 || declaredSize > data.size() - 8 || (declaredSize - 4) % 2 != 0)
+    {
+        throw std::runtime_error("Invalid localization histogram size (declared=" +
+            std::to_string(declaredSize) + ", available=" + std::to_string(data.size()) + ")");
+    }
+    const size_t size = declaredSize - 4;
     std::vector<uint16_t> values;
     values.reserve(size / 2);
     for (size_t i = 12; i < 12 + size; i += 2)
@@ -161,14 +170,14 @@ inline Chunks Merge(const Bytes& binary, const Bytes& histogram, const Strings& 
     }
     Chunks result;
     result.histogram.assign(histogram.begin(), histogram.begin() + 12);
-    Write32(result.histogram, 4, static_cast<uint32_t>(values.size() * 2));
+    Write32(result.histogram, 4, static_cast<uint32_t>(4 + values.size() * 2));
     for (uint16_t value : values)
     {
         result.histogram.push_back(static_cast<uint8_t>(value));
         result.histogram.push_back(static_cast<uint8_t>(value >> 8));
     }
     // Preserve any format-specific trailer following the declared table.
-    const size_t oldEnd = 12 + Read32(histogram, 4);
+    const size_t oldEnd = 8 + Read32(histogram, 4);
     result.histogram.insert(result.histogram.end(), histogram.begin() + oldEnd, histogram.end());
 
     const size_t tableStart = size_t(Read32(binary, 12)) + 8;

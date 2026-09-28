@@ -14,6 +14,13 @@ The game, Maxima, rebuilt module, module dependencies and all gameplay mods must
 already be installed. LAN mode skips Kyber module updates and preloaded-mod
 downloads, so it does not replace the locally built module with an upstream one.
 
+Portable fork bundles include a `lan-module` directory next to the launcher/CLI.
+Its `LAN-MODULE` marker pins that directory for **both online and offline play**;
+the upstream updater will not overwrite it. Keep the entire directory with
+Kyber.dll, vivoxsdk.dll, ca_root.pem and VanillaBundleAggregation.kb. Updating the
+fork module requires installing a newer complete fork bundle. Do not place the
+marker next to an official DLL: a marker alone cannot add LAN support.
+
 Under New Server, **LAN ONLY (NO KYBER SERVICES)** is available as an opt-in
 toggle. Leave it disabled for normal public hosting. Both public and LAN-only hosts advertise locally;
 LAN-only hosts do not register with Kyber or connect to Kyber proxies. Players
@@ -29,32 +36,108 @@ hosts. Sorting is official servers (including official Battlefront Plus), LAN
 servers, friends' servers, then other servers. A public server also found on LAN
 appears once and uses its direct LAN address. Discovery packets cannot grant a
 server official status. LAN-only hosts are not grouped using public hosting IDs.
+The route is checked again before joining. A hybrid public/LAN server still
+requires a valid Kyber login and join token; LAN priority does not disable public
+server authentication. Use LAN-only hosting for independence from Kyber outages.
+Public API failures retain the last successful public snapshot for up to two
+minutes with an on-screen warning; background refresh no longer hides the list.
 
 ## Linux CLI
 
-Run the rebuilt CLI alongside its Rust library and Maxima bootstrap, with the
-rebuilt Windows Kyber.dll and its dependencies installed for Wine:
+Run the native Linux CLI alongside its Rust library, Maxima bootstrap and
+wine-helper.exe, with the Windows Kyber.dll and its dependencies in lan-module.
+The CLI already links `maxima-lib`; no separate Maxima application is needed.
+The Windows game and DLL still need a Wine-compatible runtime on Linux. The
+original Docker image bundles Wine-GE and sets `MAXIMA_WINE_COMMAND` to it.
+Preserve the working runtime and prefix of an existing installation; do not
+unset those settings merely to try a different runtime. Outside Docker, point
+`MAXIMA_WINE_COMMAND` at an installed compatible Wine binary. Without that
+override, upstream Maxima may attempt its own runtime installation, which is
+not required by the original Docker hosting path or verified for this fork.
+Do not set DISPLAY just to suppress Wine diagnostics on a headless server.
+If MAXIMA_DISABLE_WINE_VERIFICATION is present (even set to 0), Maxima skips
+automatic runtime verification and installation.
+
+For an extracted release bundle:
 
 ```sh
 ./kyber_cli --skip-updates start_server --lan \
   --server-name 'My LAN server' \
   --game-path /mnt/battlefront/starwarsbattlefrontii.exe \
-  --module-path /opt/kyber/module \
+  --module-path /opt/kyber/lan-module \
   --map 'S5_1/Levels/MP/Geonosis_01/Geonosis_01' \
   --mode HeroesVersusVillains
 ```
 
-`KYBER_LAN_ONLY=1` also enables this mode. `--no-lan-discovery` or
+`KYBER_LAN=1` (also `KYBER_LAN=True`) or `KYBER_LAN_ONLY=1` enables this
+mode. `--no-lan-discovery` or
 `KYBER_LAN_DISCOVERY=0` disables discovery. LAN mode needs no Kyber API token and
 does not fetch or upload licenses through a Kyber license endpoint. A valid game
 license and the normal EA/Maxima startup requirements still apply. Without
 `--credentials`, the CLI uses its normal Maxima login flow; provision the account
 before using an unattended service.
 
-For the existing Docker entrypoint set `KYBER_LAN_ONLY=1`; `KYBER_TOKEN` is then
-optional. On Linux use host networking (`--network host`) so LAN broadcasts reach
-Wine. Merely publishing UDP ports through Docker NAT is insufficient for
-broadcast discovery. Existing game/module volumes and EA credentials still apply.
+The upstream Linux setup guide explains how to install Docker and the game.
+Its `registry.kyber.gg/kyber-server:latest` image supplies Wine and Maxima,
+but contains the official CLI and module, not this fork. No custom image is
+distributed. To use that image for LAN, mount the entire extracted fork CLI
+bundle and override its entrypoint so the fork binaries run instead:
+
+```sh
+unzip kyber-cli-linux-x64.zip
+chmod +x kyber-cli-linux-x64/kyber_cli kyber-cli-linux-x64/maxima-bootstrap kyber-cli-linux-x64/wine-helper.exe
+docker run --rm --network host \
+  -e MAXIMA_CREDENTIALS='email:password' \
+  -e KYBER_SERVER_NAME='My LAN server' \
+  -e KYBER_MAP_ROTATION='<base64-export-from-fork-launcher>' \
+  -e KYBER_LAN=1 \
+  -v "$PWD/kyber-cli-linux-x64:/opt/kyber-lan:ro" \
+  -v '/absolute/path/to/Battlefront II:/mnt/battlefront' \
+  --entrypoint /bin/bash registry.kyber.gg/kyber-server:latest \
+  /opt/kyber-lan/run-lan-docker-overlay.sh
+```
+
+The overlay script loads our CLI, Rust library, Maxima bootstrap/helper and
+Kyber.dll from the same bundle, while the official image supplies Wine. It
+does not use the official image's CLI or module. The game mount must be writable
+because the launcher copies `vivoxsdk.dll` into it. LAN broadcast discovery
+needs `--network host` on Linux. `KYBER_TOKEN` is unnecessary in LAN-only mode;
+EA authentication and a valid game license remain required. `KYBER_MAP_ROTATION`
+may be omitted for the default map. The fork launcher's base64 export encodes
+UTF-8 `mode;map` lines (despite the upstream article describing JSON). For a
+mod collection, add `-e KYBER_MOD_FOLDER=/mnt/mods` and mount the collection
+directory at `/mnt/mods`. With explicit `--game-path`, the fork validates the
+game executable without requiring an EA registry install entry. The `latest`
+image may change; this image-overlay path still needs a Linux in-game test.
+As in the original CLI, the server reads nested `.fbmod` paths from
+`.kbcollection`. Those names must match physical filenames in
+`KYBER_MOD_FOLDER` **inside the container**. If the metadata has display names
+but the installed `.fbcollection` uses different raw names, run the bundled
+`repair-server-collection.py` once on the Linux host to write a corrected
+metadata-only `.kbcollection` without changing the mods or CLI behavior:
+
+```sh
+python3 repair-server-collection.py /path/to/old.kbcollection \
+  --mod-folder /path/to/mounted/mods \
+  --output /path/to/repaired.kbcollection
+```
+
+Inspect the new file, then move the old `.kbcollection` outside the mounted mod
+folder and put the repaired file in its place. Keep exactly one `.kbcollection`
+there. The CLI reports exact expected paths if
+the names still differ. Client-only cosmetic mods can differ;
+level-affecting game resources must be compatible. If the
+same host is listed on physical LAN and
+Radmin, use the physical-LAN address unless UDP 25200 is also allowed through
+the VPN firewall; discovery on 25202 alone does not prove the game route works.
+For a long-running service, replace `--rm` with `-d --restart unless-stopped`
+and use `docker logs -f` to inspect startup. Avoid enabling verbose CLI logging
+while passing EA credentials on the command line.
+
+If using Docker `--env-file`, write `MAXIMA_CREDENTIALS=email:password`
+without shell quotes: Docker preserves those quotes as part of the value.
+For a value already exported by your shell, use `-e MAXIMA_CREDENTIALS`.
+Do not print the credentials when diagnosing login failures.
 
 ### Persistent service example
 
@@ -76,7 +159,7 @@ User=kyber
 WorkingDirectory=/opt/kyber
 Environment=KYBER_LAN_ONLY=1
 EnvironmentFile=/etc/kyber/lan.env
-ExecStart=/opt/kyber/kyber_cli --skip-updates start_server --lan --server-name=LAN --module-path=/opt/kyber/module --game-path=/mnt/battlefront/starwarsbattlefrontii.exe --credentials=${MAXIMA_CREDENTIALS}
+ExecStart=/opt/kyber/kyber_cli --skip-updates start_server --lan --server-name=LAN --module-path=/opt/kyber/lan-module --game-path=/mnt/battlefront/starwarsbattlefrontii.exe --credentials=${MAXIMA_CREDENTIALS}
 Restart=always
 RestartSec=10
 TimeoutStopSec=30
@@ -93,8 +176,11 @@ Install and start with `systemctl daemon-reload` and
 Allow inbound UDP **25200** (game) and **25202** (discovery) from your trusted LAN
 on the host. Do not forward these ports on the internet router. Discovery uses
 limited IPv4 broadcast plus loopback, and accepts private, link-local and
-loopback IPv4 sources. IPv6, routed VLANs, broadcast-blocking Wi-Fi isolation
-and VPNs that do not carry broadcasts are not covered. One discoverable server
+loopback IPv4 sources. Radmin 26/8 is also supported when the local machine has
+a 26/8 adapter; a directed 26.255.255.255 probe supplements limited broadcast.
+26/8 is not an RFC1918 private network. Restrict firewall rules to trusted VPN
+peers as well as your physical LAN. IPv6, routed VLANs, broadcast-blocking Wi-Fi
+isolation and VPNs that do not carry broadcasts are not covered. One discoverable server
 per machine/network namespace is supported with these fixed ports.
 
 The query is ASCII `KYBER-LAN-1:` followed by a random 16-byte nonce. The response
@@ -104,20 +190,9 @@ the response, and discards it on the next scan if the host no longer responds.
 The game thread polls a nonblocking discovery socket, bounds work per tick and
 limits responses. The nonce correlates responses; it does not authenticate hosts.
 
-## Verification
+## Manual release checks
 
-After generating protobuf bindings:
-
-```sh
-cd tools/lan_tests
-dart pub get
-dart test
-```
-
-Tests exercise a real loopback UDP responder, malformed/stale replies, metadata
-sanitization, deduplication, stopped hosts, address validation and the host flag's
-protobuf round trip, plus official/LAN/friend priority. Before releasing binaries,
-test on two physical machines:
+Before releasing binaries, test on two physical machines:
 
 1. Block access to Kyber services, enter LAN mode and launch an unmodded host.
 2. On another machine, refresh the browser, select REGION → LAN and join.
@@ -125,4 +200,27 @@ test on two physical machines:
 4. Repeat with matching gameplay mods and a Linux/Wine host (including restart).
 5. Restore normal mode and check official/LAN/friend ordering and public joins.
 
-The automated protocol tests do not substitute for an in-game multiplayer test.
+## Linux bundle ABI check
+
+Pin the Dart package, Rust crate and FRB generator to **2.11.1** together.
+Run `dart tool/check_frb_version.dart` inside CLI before packaging. Windows
+cross-compilation and ELF inspection alone are not a Linux runtime test.
+
+New release bundles include SHA256SUMS and release-manifest.json. Verify them
+before installing the package. The cross-built CLI requires glibc 2.30 or newer.
+Use `sh diagnose-linux.sh` under the service user's environment to report the
+runtime selection, package hashes and listening LAN ports without starting the
+game or changing the prefix. It does not inspect credentials or dump the full
+environment. A successful help command is not a successful game launch.
+
+Older bundles' `Kyber started` message is emitted on the game's license request.
+The updated CLI labels that event explicitly as not confirming server readiness.
+Server readiness
+requires map startup and the discovery-listening log; an access violation after
+the license event remains a startup failure.
+
+The earlier experimental managed Proton/umu patch is removed. It was not part
+of the original Docker hosting path and was not shown to cure the BFII crash.
+Keep DISPLAY and WAYLAND_DISPLAY unset for the headless test. For systemd, use
+the service's existing runtime environment. The game launch remains unverified
+on Linux, including without mods.

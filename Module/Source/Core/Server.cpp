@@ -398,15 +398,44 @@ __int64 SettingsManagerApplyHk(__int64 inst, __int64* a2, char* script, BYTE* a4
     static const auto trampoline = HookManager::Call(SettingsManagerApplyHk);
     __int64 result = trampoline(inst, a2, script, a4);
 
-    Settings<MeshStreamingSettings>("MeshStreaming")->PoolSize = 999999;
-    
-    // Setting designed for bot balancer to ensure that AutoBalanceTeamsOnNeutral is never true.
+    // Gameplay settings apply equally to hosted and headless servers.
     KyberSettings* kyberSettings = Settings<KyberSettings>("Kyber");
     if (kyberSettings != nullptr)
     {
-        bool enableTeamBalancing = !kyberSettings->DisableTeamBalancing;
-        Settings<WSGameSettings>("Whiteshark")->AutoBalanceTeamsOnNeutral = enableTeamBalancing;
+        Settings<WSGameSettings>("Whiteshark")->AutoBalanceTeamsOnNeutral = !kyberSettings->DisableTeamBalancing;
     }
+
+    if (g_program->m_isDedicatedServer)
+    {
+        GameRenderSettings* renderSettings = Settings<GameRenderSettings>("Render");
+        if (renderSettings == nullptr)
+        {
+            KYBER_LOG(Error, "[Renderer] Cannot enable headless mode: Render settings are unavailable");
+            return result;
+        }
+
+        // Frostbite has a built-in null renderer for dedicated servers.
+        // Keep simulation active, but do not initialize a D3D device or
+        // create render-only entity/debug work.
+        renderSettings->NullRendererEnable = true;
+        renderSettings->Dx11Enable = false;
+        renderSettings->Dx12Enable = false;
+        renderSettings->DxrEnable = 0;
+        renderSettings->EntityRenderEnable = false;
+        renderSettings->DebugRendererEnable = false;
+        renderSettings->DebugRenderServiceEnable = false;
+        renderSettings->InitialClearEnable = false;
+
+        static bool logged = false;
+        if (!logged)
+        {
+            KYBER_LOG(Info, "[Renderer] Dedicated server using the null renderer");
+            logged = true;
+        }
+        return result;
+    }
+
+    Settings<MeshStreamingSettings>("MeshStreaming")->PoolSize = 999999;
 
     GameRenderSettings* renderSettings = Settings<GameRenderSettings>("Render");
     renderSettings->Dx11Enable = true;
@@ -720,13 +749,13 @@ HookTemplate clientServerHookOffsets[] = {
 HookTemplate dedicatedServerHookOffsets[] = {
     { OFFSET_SERVER_CONSTRUCTOR, ServerCtorHk },
     { OFFSET_SERVERPLAYER_SETTEAMID, ServerPlayerSetTeamIdHk },
+    { OFFSET_APPLY_SETTINGS, SettingsManagerApplyHk },
     { HOOK_OFFSET(0x1484213F0), GetSocketManagerHk },
     { HOOK_OFFSET(0x1478F8440), PresenceBackendManagerAddBackendHk },
     { HOOK_OFFSET(0x1418CA790), LoadSomethingHk },
     //{ OFFSET_SERVERCONNECTION_KICKPLAYER, ServerConnectionKickPlayerHk },
     { HOOK_OFFSET(0x140D4E1D0), MessageStreamAddMessageHk },
     { HOOK_OFFSET(0x1418D3380), CreatePresenceBackendHk },
-    //{ OFFSET_APPLY_SETTINGS, SettingsManagerApplyHk },
     { OFFSET_SERVERCONNECTION_ONCREATEPLAYERMESSAGE, ServerConnectionOnCreatePlayerMessageHk },
     { OFFSET_SERVER_UPDATEPASSPREFRAME, ServerUpdatePassPreFrameHk },
     { HOOK_OFFSET(0x140BCF350), ServerLoadLevelMessagePostHk },

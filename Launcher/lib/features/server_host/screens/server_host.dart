@@ -19,7 +19,6 @@ import 'package:kyber_launcher/shared/ui/buttons/button.dart';
 import 'package:kyber_launcher/shared/ui/elements/kyber_input.dart';
 import 'package:kyber_launcher/shared/ui/elements/kyber_tab_bar.dart';
 import 'package:kyber_launcher/shared/ui/layout/bordered_content.dart';
-import 'package:kyber_launcher/shared/ui/utils/background_blur.dart';
 import 'package:logging/logging.dart';
 
 class ServerHost extends StatefulWidget {
@@ -52,10 +51,12 @@ class _ServerHostState extends State<ServerHost> {
           previous is KyberStatusHosting && current is! KyberStatusHosting,
       listener: (context, state) {
         if (state is KyberStatusHosting) {
-          Logger('server_host')
-              .info('Detected hosting status (${state.serverState.id})');
+          Logger(
+            'server_host',
+          ).info('Detected hosting status (${state.serverState.id})');
           setState(() => createServer = false);
           if (state.serverState.id.startsWith('lan:')) {
+            context.read<ModerationServersCubit>().loadServers();
             return;
           }
           context.read<ModerationCubit>().selectServer(
@@ -63,6 +64,7 @@ class _ServerHostState extends State<ServerHost> {
           );
         } else {
           context.read<ModerationCubit>().unloadServer();
+          context.read<ModerationServersCubit>().loadServers();
         }
       },
       child: Row(

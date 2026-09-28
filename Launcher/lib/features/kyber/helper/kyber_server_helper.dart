@@ -26,6 +26,14 @@ class KyberServerHelper {
     bool? spectator,
     String? password,
   }) async {
+    // Selections/invite links may predate the last scan. Resolve LAN again
+    // immediately before joining, including when an online row was selected.
+    if (!server.isLanOnly) {
+      final local = (await LanDiscovery().discover()).firstWhereOrNull(
+        (s) => s.id == server.id && !s.isLanOnly,
+      );
+      if (local != null) server = LanDiscovery.preferLan(server, local);
+    }
     if (sl.isRegistered<MaximaGameInstance>() &&
         sl.get<MaximaGameInstance>().lanOnly != server.isLanOnly) {
       NotificationService.error(
@@ -69,7 +77,7 @@ class KyberServerHelper {
     final tmpCollection = ModCollectionMetaData(
       title: server.name,
       mods: [
-        if (selectedCollection != null &&
+        if (selectedCollection == null ||
             !selectedCollection.containsGameplayMods())
           ...collectionMods,
         if (selectedCollection != null) ...selectedCollection.mods,
@@ -86,6 +94,11 @@ class KyberServerHelper {
     }
 
     var proxyIp = '';
+    if (server.isLan) {
+      _logger.info(
+        'Joining server directly over LAN ($serverIp:${server.port})',
+      );
+    }
     if (server.requiresProxy) {
       final proxyCubit = navigatorKey.currentContext!.read<KyberProxyCubit>();
       if (proxyCubit.isLoading) {

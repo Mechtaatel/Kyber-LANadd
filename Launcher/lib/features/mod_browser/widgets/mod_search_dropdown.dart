@@ -52,6 +52,7 @@ class ModSearchDropdownState extends State<ModSearchDropdown> {
           color: Colors.black.withOpacity(.4),
           child: mt.TextFormField(
             style: const mt.TextStyle(
+              color: kWhiteColor,
               fontFamily: FontFamily.battlefrontUI,
               fontSize: 16,
               height: 1,

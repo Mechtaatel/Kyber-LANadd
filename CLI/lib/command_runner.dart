@@ -104,7 +104,7 @@ class KyberCliCommandRunner extends CompletionCommandRunner<int> {
 
       final apiEnv = Platform.environment['KYBER_API_ENV'] ?? 'prod';
       final lanOnly =
-          Platform.environment['KYBER_LAN_ONLY'] == '1' ||
+          LanMode.fromEnvironment(Platform.environment) ||
           topLevelResults.command?.name == 'start_server' &&
               topLevelResults.command?['lan'] == true;
 
@@ -119,6 +119,7 @@ class KyberCliCommandRunner extends CompletionCommandRunner<int> {
       if (topLevelResults.command != null &&
           !topLevelResults.arguments.contains('--help')) {
         if (!lanOnly &&
+            !FileHelper.hasPinnedLanModule &&
             !topLevelResults.arguments.contains('--skip-updates') &&
             !Platform.isLinux &&
             [

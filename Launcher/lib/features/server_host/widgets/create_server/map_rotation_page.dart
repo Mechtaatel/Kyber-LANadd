@@ -10,7 +10,6 @@ import 'package:kyber_launcher/core/config/colors.dart';
 import 'package:kyber_launcher/core/services/notification_service.dart';
 import 'package:kyber_launcher/features/kyber/extensions/map_extension.dart';
 import 'package:kyber_launcher/features/kyber/models/mode.dart';
-import 'package:kyber_launcher/features/kyber/providers/kyber_status_cubit.dart';
 import 'package:kyber_launcher/features/kyber/services/map_helper.dart';
 import 'package:kyber_launcher/features/map_rotation/dialogs/export_rotation_dialog.dart';
 import 'package:kyber_launcher/features/map_rotation/providers/map_rotation_cubit.dart';
@@ -43,14 +42,8 @@ class _MapRotationPageState extends State<MapRotationPage> {
   Mode? selectedMode;
 
   @override
-  void initState() {
-    super.initState();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final cubit = context.read<MapRotationCubit>();
-    final kyberState = context.watch<KyberStatusCubit>().state;
 
     return BlocListener<MapRotationCubit, MapRotationState>(
       listener: (context, state) => saveRotation(),

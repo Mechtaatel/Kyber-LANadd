@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:kyber_launcher/core/config/colors.dart';
 import 'package:kyber_launcher/shared/ui/buttons/button.dart';
 import 'package:kyber_launcher/shared/ui/dialog/kyber_dialog.dart';
 
@@ -22,6 +23,7 @@ class _SetTokenDialogState extends State<SetTokenDialog> {
           const Text('Enter the token address'),
           const SizedBox(height: 10),
           TextField(
+            style: const TextStyle(color: kWhiteColor),
             controller: controller,
             decoration: const InputDecoration(
               hintText: 'TOKEN',

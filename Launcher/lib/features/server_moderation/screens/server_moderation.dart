@@ -40,6 +40,17 @@ class _ServerModerationState extends State<ServerModeration> {
           return const Placeholder();
         }
 
+        if (widget.selectedPage == 1 && state.server?.isLanOnly == true) {
+          return const Center(
+            child: Text(
+              'LAN moderation is local. Use MODERATE to view players, '
+              'kick, swap teams and run console commands. '
+              'Kyber account bans and moderator roles require Kyber services.',
+              textAlign: TextAlign.center,
+            ),
+          );
+        }
+
         if (widget.selectedPage == 1) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -859,6 +870,27 @@ class _TeamContainerState extends State<_TeamContainer> {
                                     message: 'Kick player'.toUpperCase(),
                                     child: CustomSvgButton(
                                       onPressed: () async {
+                                        if (state.server?.isLanOnly == true) {
+                                          try {
+                                            await context
+                                                .read<ModerationCubit>()
+                                                .kickPlayer(
+                                                  player.id,
+                                                  playerName: player.name,
+                                                );
+                                          } catch (error, stackTrace) {
+                                            Logger.root.severe(
+                                              'Error kicking LAN player',
+                                              error,
+                                              stackTrace,
+                                            );
+                                            NotificationService.error(
+                                              message:
+                                                  'Failed to kick LAN player',
+                                            );
+                                          }
+                                          return;
+                                        }
                                         final reason =
                                             await showKyberDialog<String?>(
                                               context: context,
@@ -903,29 +935,31 @@ class _TeamContainerState extends State<_TeamContainer> {
                                     ),
                                   ),
                                   const SizedBox(width: 5),
-                                  KyberTooltip(
-                                    message: 'Ban player'.toUpperCase(),
-                                    child: CustomSvgButton(
-                                      onPressed: () async {
-                                        final result = await showKyberDialog(
-                                          context: context,
-                                          builder: (_) => BlocProvider.value(
-                                            value: context
-                                                .read<ModerationCubit>(),
-                                            child: ModerationBanDialog(
-                                              player: player,
+                                  if (state.server?.isLanOnly != true)
+                                    KyberTooltip(
+                                      message: 'Ban player'.toUpperCase(),
+                                      child: CustomSvgButton(
+                                        onPressed: () async {
+                                          await showKyberDialog(
+                                            context: context,
+                                            builder: (_) => BlocProvider.value(
+                                              value: context
+                                                  .read<ModerationCubit>(),
+                                              child: ModerationBanDialog(
+                                                player: player,
+                                              ),
                                             ),
-                                          ),
-                                        );
-                                      },
-                                      path: Assets.icons.kblBan.path,
-                                      hoverColor: Colors.black,
-                                      color: hovered ? kButtonBorder : null,
-                                      size: 17,
+                                          );
+                                        },
+                                        path: Assets.icons.kblBan.path,
+                                        hoverColor: Colors.black,
+                                        color: hovered ? kButtonBorder : null,
+                                        size: 17,
+                                      ),
                                     ),
-                                  ),
                                   const SizedBox(width: 5),
-                                  if ((!state.moderators.contains(player) &&
+                                  if (state.server?.isLanOnly != true &&
+                                      (!state.moderators.contains(player) &&
                                           state.server?.creatorId !=
                                               player.id) &&
                                       context
@@ -938,8 +972,9 @@ class _TeamContainerState extends State<_TeamContainer> {
                                 ],
                               ),
                             ),
-                            if (state.moderators.contains(player) ||
-                                state.server?.creatorId == player.id) ...[
+                            if (state.server?.isLanOnly != true &&
+                                (state.moderators.contains(player) ||
+                                    state.server?.creatorId == player.id)) ...[
                               _ModeratorWidget(state, hovered, player),
                             ],
                           ],

@@ -395,7 +395,13 @@ class _ServerInfoBar extends StatelessWidget {
             ),
             const _Divider(),
           ],
-          if (server.isLan) ...[const Text('LAN'), const _Divider()],
+          if (server.isLan) ...[
+            Tooltip(
+              message: 'Direct connection to ${server.ip}:${server.port}',
+              child: Text('LAN ${server.ip}:${server.port}'),
+            ),
+            const _Divider(),
+          ],
           Text(
             server.levelSetup.modeName.isNotEmpty
                 ? server.levelSetup.modeName.toUpperCase()

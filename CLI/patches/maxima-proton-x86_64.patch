@@ -1,0 +1,97 @@
+diff --git a/maxima-lib/src/unix/wine.rs b/maxima-lib/src/unix/wine.rs
+index fa194f4..35cc74c 100644
+--- a/maxima-lib/src/unix/wine.rs
++++ b/maxima-lib/src/unix/wine.rs
+@@ -11,7 +11,6 @@ use std::{
+ use flate2::read::GzDecoder;
+ use lazy_static::lazy_static;
+ use log::{info, warn};
+-use regex::Regex;
+ use reqwest::StatusCode;
+ use serde::{Deserialize, Serialize};
+ use tar::Archive;
+@@ -28,9 +27,9 @@ use crate::util::{
+     registry::RegistryError,
+ };
+ 
+-lazy_static! {
+-    static ref PROTON_PATTERN: Regex = Regex::new(r"GE-Proton\d+-\d+\.tar\.gz").unwrap();
+-}
++#[path = "proton_release.rs"]
++mod proton_release;
++use proton_release::is_supported_asset;
+ 
+ // A Proton verb to use
+ pub enum CommandType {
+@@ -223,7 +222,9 @@ fn get_wine_release() -> Result<GithubRelease, WineError> {
+ 
+     let mut release = None;
+     for r in releases {
+-        if r.tag_name.ends_with("LoL") {
++        if r.tag_name.ends_with("LoL")
++            || !r.assets.iter().any(|asset| is_supported_asset(&asset.name))
++        {
+             continue;
+         }
+ 
+@@ -308,7 +309,7 @@ pub(crate) async fn install_wine() -> Result<(), NativeError> {
+     let asset = match release
+         .assets
+         .iter()
+-        .find(|x| PROTON_PATTERN.captures(&x.name).is_some())
++        .find(|x| is_supported_asset(&x.name))
+     {
+         Some(asset) => asset,
+         None => return Err(NativeError::Wine(WineError::Fetch)),
+diff --git a/maxima-lib/src/unix/proton_release.rs b/maxima-lib/src/unix/proton_release.rs
+new file mode 100644
+index 0000000..60e00e2
+--- /dev/null
++++ b/maxima-lib/src/unix/proton_release.rs
+@@ -0,0 +1,46 @@
++// Kyber's Linux CLI hosts the x86_64 Windows game. New Proton releases include
++// an architecture suffix; never select the aarch64 asset or a checksum file.
++pub(crate) fn is_supported_asset(name: &str) -> bool {
++    let Some(version) = name
++        .strip_prefix("GE-Proton")
++        .and_then(|name| name.strip_suffix(".tar.gz"))
++    else {
++        return false;
++    };
++    let version = version.strip_suffix("-x86_64").unwrap_or(version);
++    let Some((major, minor)) = version.split_once('-') else {
++        return false;
++    };
++    [major, minor]
++        .iter()
++        .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
++}
++
++#[cfg(test)]
++mod tests {
++    use super::is_supported_asset;
++
++    #[test]
++    fn accepts_current_x86_64_and_legacy_names() {
++        assert!(is_supported_asset("GE-Proton11-7-x86_64.tar.gz"));
++        assert!(is_supported_asset("GE-Proton10-1.tar.gz"));
++    }
++
++    #[test]
++    fn rejects_other_architectures_checksums_and_malformed_names() {
++        for name in [
++            "GE-Proton11-7-aarch64.tar.gz",
++            "GE-Proton11-7-x86_64.sha512sum",
++            "GE-Proton11-7.tar.gz.sha512sum",
++            "GE-Proton11-7-x86_64.tar.gz.exe",
++            "prefix-GE-Proton11-7.tar.gz",
++            "GE-Proton11-7-LoL.tar.gz",
++            "GE-Proton-7.tar.gz",
++            "GE-Proton11-.tar.gz",
++            "GE-Proton11-seven.tar.gz",
++            "GE-Proton11-7.tar.zst",
++        ] {
++            assert!(!is_supported_asset(name), "unexpected supported asset: {}", name);
++        }
++    }
++}
