@@ -67,7 +67,7 @@ foreach ($bundle in @($win.FullName, $linux.FullName)) {
     }
     Copy-Item -LiteralPath "$repo/Module/LAN-MODULE" -Destination $module.FullName
     Copy-Item -LiteralPath "$repo/Module/LAN-MODULE" -Destination "$($module.FullName)/VERSION"
-    Copy-Item -LiteralPath "$repo/docs/LAN.md", "$repo/docs/LAN-RELEASE-RU.md", "$repo/LICENSE" -Destination $bundle
+    Copy-Item -LiteralPath "$repo/docs/LAN.md", "$repo/LICENSE" -Destination $bundle
 }
 foreach ($bundle in @($win, $linux)) {
     # Record exact packaged bytes. The source check does not claim a Linux

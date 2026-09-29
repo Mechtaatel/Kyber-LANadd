@@ -224,3 +224,12 @@ of the original Docker hosting path and was not shown to cure the BFII crash.
 Keep DISPLAY and WAYLAND_DISPLAY unset for the headless test. For systemd, use
 the service's existing runtime environment. The game launch remains unverified
 on Linux, including without mods.
+
+## Unicode localization mods
+
+Localization replacements support Cyrillic (including Ё/ё), other scripts and
+UTF-16 surrogate pairs. The module rebuilds the string table and histogram;
+invalid or oversized input leaves the original localization intact and is
+reported in the module log. This fixes text encoding, not missing glyphs in a
+mod's custom font. A specific Russian localization mod still needs in-game
+verification.

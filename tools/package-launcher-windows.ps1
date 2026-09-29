@@ -42,7 +42,6 @@ Get-ChildItem -LiteralPath $RuntimeDirectory -Filter '*.dll' | ForEach-Object {
     Copy-Item -LiteralPath $_.FullName -Destination $module.FullName
 }
 Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination $destination
-Copy-Item -LiteralPath (Join-Path $repo 'docs/LAUNCHER-UPDATE-RU.md') -Destination $destination
 $sums = @(Get-ChildItem -LiteralPath $destination -File -Recurse | Sort-Object FullName | ForEach-Object {
     $relative = $_.FullName.Substring($destination.Length + 1).Replace('\', '/')
     "$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $relative"
