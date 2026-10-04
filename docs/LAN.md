@@ -15,14 +15,18 @@ already be installed. LAN mode skips Kyber module updates and preloaded-mod
 downloads, so it does not replace the locally built module with an upstream one.
 
 Portable fork bundles include a `lan-module` directory next to the launcher/CLI.
-Its `LAN-MODULE` marker pins that directory for **both online and offline play**;
-the upstream updater will not overwrite it. Keep the entire directory with
+For Windows online play, the launcher installs the bundled fork `Kyber.dll` into
+`%ProgramData%/Kyber/Module` so Cyrillic localization works there too. The first
+stock DLL is saved as `Kyber.dll.lan-add-original` and restored when LAN ADD is
+uninstalled. Kyber module updates refresh the accompanying official files, then
+the launcher restores its bundled DLL. Keep the entire LAN bundle with
 Kyber.dll, vivoxsdk.dll, ca_root.pem and VanillaBundleAggregation.kb. Updating the
 fork module requires installing a newer complete fork bundle. Do not place the
 marker next to an official DLL: a marker alone cannot add LAN support.
 
-Under New Server, **LAN ONLY (NO KYBER SERVICES)** is available as an opt-in
-toggle. Leave it disabled for normal public hosting. Both public and LAN-only hosts advertise locally;
+Under New Server, **LAN ONLY** is available with OFF/ON buttons.
+Leave it disabled for normal public hosting. Both online and LAN-only sessions
+use the fork DLL; LAN-only hosts advertise locally and skip Kyber services.
 LAN-only hosts do not register with Kyber or connect to Kyber proxies. Players
 connect directly to the host. LAN-only sessions do not use Kyber join tokens,
 global bans, verified Kyber identities, public statistics or Vivox voice chat.
@@ -39,6 +43,8 @@ server official status. LAN-only hosts are not grouped using public hosting IDs.
 The route is checked again before joining. A hybrid public/LAN server still
 requires a valid Kyber login and join token; LAN priority does not disable public
 server authentication. Use LAN-only hosting for independence from Kyber outages.
+The CLI retains its existing bundle-first module selection and is not changed
+by this Windows launcher compatibility workaround.
 Public API failures retain the last successful public snapshot for up to two
 minutes with an on-screen warning; background refresh no longer hides the list.
 

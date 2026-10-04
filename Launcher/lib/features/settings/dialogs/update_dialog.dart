@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:kyber_launcher/core/config/colors.dart';
 import 'package:kyber_launcher/core/services/module_version_service.dart';
@@ -34,7 +32,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
   void initState() {
     if (WindowsUtils.isWindowsCompMode()) {
       isCompMode = true;
-    } else if (widget.forceInstall) {
+    } else if (widget.forceInstall && widget.module == VersionModule.module) {
       startDownload();
     }
 
@@ -42,36 +40,29 @@ class _UpdateDialogState extends State<UpdateDialog> {
   }
 
   void startDownload() async {
-    if (ModuleVersionService().isStandalone() && widget.module != VersionModule.module) {
-      NotificationService.showNotification(
-        message:
-            'Automatic updates are not supported in the standalone version.',
+    if (widget.module == VersionModule.installer) {
+      await launchUrlString(
+        'https://github.com/Mechtaatel/Kyber-LANadd/releases',
       );
-      await Future.delayed(const Duration(seconds: 2));
-      await launchUrlString('https://github.com/ArmchairDevelopers/KyberV2');
       return;
     }
-
-    unawaited(
-      ModuleVersionService()
-          .updateVersion(
-            module: widget.module,
-            onProgress: (current, total) => setState(() {
-              this.current = current;
-              this.total = total;
-            }),
-          )
-          .then(
-            (_) {
-              if (widget.module == VersionModule.module) {
-                Navigator.pop(context);
-              }
-            },
-          ),
-    );
     setState(() => installing = true);
-    if (widget.module == VersionModule.installer) {
-      NotificationService.showNotification(message: 'Installing update...');
+    try {
+      await ModuleVersionService().updateVersion(
+        module: widget.module,
+        onProgress: (current, total) {
+          if (!mounted) return;
+          setState(() {
+            this.current = current;
+            this.total = total;
+          });
+        },
+      );
+      if (mounted) Navigator.pop(context);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => installing = false);
+      NotificationService.error(message: 'Module update failed: $error');
     }
   }
 
@@ -93,7 +84,9 @@ class _UpdateDialogState extends State<UpdateDialog> {
         ),
         KyberButton(
           onPressed: !installing ? startDownload : null,
-          text: 'Install',
+          text: widget.module == VersionModule.installer
+              ? 'OPEN RELEASES'
+              : 'Install',
         ),
       ],
       content: SizedBox(
@@ -142,8 +135,10 @@ class _UpdateDialogState extends State<UpdateDialog> {
                   ),
                   const SizedBox(height: 12),
                 ],
-                const Text(
-                  'A new version of the launcher is available!',
+                Text(
+                  widget.module == VersionModule.installer
+                      ? 'LAN ADD launcher and LAN module updates are available from our GitHub Releases. The official Kyber game module updates separately.'
+                      : 'Update the official Kyber game module. Your LAN module will not be changed.',
                   style: TextStyle(
                     fontSize: 15,
                   ),

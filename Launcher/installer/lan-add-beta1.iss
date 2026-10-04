@@ -1,10 +1,17 @@
 #define MyAppName "KYBER Launcher LAN ADD"
-#define MyAppVersion "1.0.0-beta.1"
+#ifndef MyAppVersion
+  #define MyAppVersion "1.0.0-beta.1"
+#endif
 #define MyAppPublisher "Mechtaatel"
 #define MyAppURL "https://github.com/Mechtaatel/Kyber-LANadd"
 #define AppId "KyberLauncherLANADD"
 #define AppExeName "kyber_launcher.exe"
-#define BundleSourceDir "..\..\artifacts\kyber-lan-add-beta1-windows"
+#ifndef BundleSourceDir
+  #define BundleSourceDir "..\..\artifacts\kyber-lan-add-beta1-windows"
+#endif
+#ifndef SetupOutputName
+  #define SetupOutputName "Kyber-LAN-ADD-Beta-1-Setup"
+#endif
 
 [Setup]
 AppId={#AppId}
@@ -24,7 +31,7 @@ UninstallDisplayIcon={app}\{#AppExeName}
 SetupIconFile=..\windows\runner\resources\app_icon.ico
 LicenseFile=..\..\LICENSE
 OutputDir=..\..\artifacts
-OutputBaseFilename=Kyber-LAN-ADD-Beta-1-Setup
+OutputBaseFilename={#SetupOutputName}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -52,3 +59,24 @@ Root: HKCR; Subkey: "KyberLauncherLANADD.kmodfile\shell\open\command"; ValueType
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ModuleDll: String;
+  OriginalDll: String;
+begin
+  if CurUninstallStep = usUninstall then
+  begin
+    ModuleDll := ExpandConstant('{commonappdata}\Kyber\Module\Kyber.dll');
+    OriginalDll := ModuleDll + '.lan-add-original';
+    if FileExists(OriginalDll) then
+    begin
+      if FileCopy(OriginalDll, ModuleDll, True) then
+        DeleteFile(OriginalDll)
+      else
+        MsgBox('Could not restore the original Kyber.dll. The backup remains at:' + #13#10 + OriginalDll,
+          mbError, MB_OK);
+    end;
+  end;
+end;

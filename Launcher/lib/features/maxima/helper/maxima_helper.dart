@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge.dart';
 import 'package:kyber/kyber.dart';
 import 'package:kyber_collection/kyber_collection.dart';
 import 'package:kyber_launcher/core/services/app_settings.dart';
-import 'package:kyber_launcher/core/services/module_version_service.dart';
 import 'package:kyber_launcher/core/services/module_launch_directory.dart';
 import 'package:kyber_launcher/core/services/notification_service.dart';
 import 'package:kyber_launcher/core/services/windows_env.dart';
@@ -146,7 +146,19 @@ class MaximaHelper {
       throw Exception('PATH environment variable is not set');
     }
 
-    var moduleDirectory = FileHelper.getModuleDirectory();
+    final lanOnly =
+        LanMode.enabled ||
+        (initializeRequest?.startServer.lanOnly ?? false) ||
+        initializeRequest != null &&
+            initializeRequest.hasJoinServer() &&
+            !initializeRequest.joinServer.hasId();
+    if (!lanOnly) {
+      final installedDll = await FileHelper.installLanAddDllForOnline();
+      _logger.info(
+        'Using LAN ADD Kyber.dll for online play: ${installedDll.path}',
+      );
+    }
+    var moduleDirectory = FileHelper.getGameModuleDirectory(lanOnly: lanOnly);
     final missingFiles = <String>[];
     for (final name in [
       'Kyber.dll',
@@ -168,23 +180,23 @@ class MaximaHelper {
     if (Platform.isWindows) {
       moduleDirectory = await prepareModuleLaunchDirectory(moduleDirectory);
     }
-    final moduleVersion =
-        (await VersionModule.module.getCurrentVersion())?.trim() ?? 'unknown';
+    final versionFile = File(p.join(moduleDirectory.path, 'VERSION'));
+    final moduleVersion = await versionFile.exists()
+        ? (await versionFile.readAsString()).trim()
+        : 'unknown';
+    final moduleHash = await sha256
+        .bind(File(p.join(moduleDirectory.path, 'Kyber.dll')).openRead())
+        .first;
     _logger.info(
       'Game module: ${p.join(moduleDirectory.path, 'Kyber.dll')}; '
-      'version: $moduleVersion; selected mods: ${mods?.length ?? 0}',
+      'mode: ${lanOnly ? 'LAN ONLY' : 'KYBER ONLINE'}; '
+      'version: $moduleVersion; SHA256: $moduleHash; selected mods: ${mods?.length ?? 0}',
     );
 
     final grpcDebug = Preferences.debug.grpcDebugLogs;
     final moduleDebug = Preferences.debug.moduleDebugLogs;
     final newPath = '$path;${moduleDirectory.path}';
     final interfacePort = await KyberNetworkHelper.findAvailablePort();
-    final lanOnly =
-        LanMode.enabled ||
-        (initializeRequest?.startServer.lanOnly ?? false) ||
-        initializeRequest != null &&
-            initializeRequest.hasJoinServer() &&
-            !initializeRequest.joinServer.hasId();
     ProcessEnv.set('KYBER_LAN_ONLY', lanOnly ? '1' : '0');
     ProcessEnv.set('KYBER_ONLINE_MODE', lanOnly ? '0' : '1');
     final kToken = lanOnly

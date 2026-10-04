@@ -37,7 +37,13 @@ $module = New-Item -ItemType Directory -Path (Join-Path $destination 'lan-module
 foreach ($name in $requiredModule) {
     Copy-Item -LiteralPath (Join-Path $ModuleDirectory $name) -Destination $module.FullName
 }
-Get-ChildItem -LiteralPath $RuntimeDirectory -Filter '*.dll' | ForEach-Object {
+# The launcher's own voice service loads Vivox next to the executable.
+Copy-Item -LiteralPath (Join-Path $ModuleDirectory 'vivoxsdk.dll') -Destination $destination
+# Never overwrite freshly built Flutter/Rust/plugin DLLs when the runtime
+# source is an existing installation rather than the MSVC redist directory.
+Get-ChildItem -LiteralPath $RuntimeDirectory -Filter '*.dll' | Where-Object {
+    $_.Name -match '^(msvcp140(?:_[a-z0-9_]+)?|vcruntime140(?:_[a-z0-9_]+)?|concrt140|vccorlib140)\.dll$'
+} | ForEach-Object {
     Copy-Item -LiteralPath $_.FullName -Destination $destination
     Copy-Item -LiteralPath $_.FullName -Destination $module.FullName
 }
@@ -52,7 +58,7 @@ Compress-Archive -Path (Join-Path $destination '*') -DestinationPath $archive
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [IO.Compression.ZipFile]::OpenRead($archive)
 try {
-    foreach ($name in ($requiredRelease + $requiredMaxima + $requiredRuntime + @(($requiredModule + $requiredRuntime) | ForEach-Object { "lan-module/$_" }))) {
+    foreach ($name in ($requiredRelease + $requiredMaxima + $requiredRuntime + @('vivoxsdk.dll') + @(($requiredModule + $requiredRuntime) | ForEach-Object { "lan-module/$_" }))) {
         if (!$zip.GetEntry($name)) { throw "Missing packaged component: $name" }
     }
 } finally { $zip.Dispose() }

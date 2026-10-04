@@ -29,13 +29,15 @@ extension VersionModuleExtension on VersionModule {
   Future<String?> getCurrentVersion() async {
     switch (this) {
       case VersionModule.module:
-        final x = File(join(FileHelper.getModuleDirectory().path, 'VERSION'));
+        final x = File(
+          join(FileHelper.getOfficialModuleDirectory().path, 'VERSION'),
+        );
 
         if (!x.existsSync()) {
           return null;
         }
 
-        return x.readAsStringSync();
+        return x.readAsStringSync().trim();
       case VersionModule.installer:
         final info = await PackageInfo.fromPlatform();
 
@@ -53,7 +55,7 @@ extension VersionModuleExtension on VersionModule {
           'kyber_launcher_${DateTime.now().millisecondsSinceEpoch}',
         );
       case VersionModule.module:
-        return FileHelper.getModuleDirectory().path;
+        return FileHelper.getOfficialModuleDirectory().path;
     }
   }
 
@@ -70,8 +72,9 @@ extension VersionModuleExtension on VersionModule {
       case VersionModule.installer:
         return [];
       case VersionModule.module:
-        final modulePath = FileHelper.getModuleDirectory().path;
+        final modulePath = FileHelper.getOfficialModuleDirectory().path;
         return [
+          '$modulePath/ca_root.pem',
           '$modulePath/vivoxsdk.dll',
           '$modulePath/VanillaBundleAggregation.kb',
           '$modulePath/Kyber.dll',
@@ -141,22 +144,11 @@ class ModuleVersionService {
     String? channel,
     KyberGRPCService? service,
   }) async {
-    // The standalone fork bundle carries its own pinned LAN module and must
-    // never offer the upstream launcher installer for this executable.
-    if (module == VersionModule.installer && FileHelper.hasPinnedLanModule) {
+    // Fork launcher releases are manual, even if lan-module was removed.
+    // Only the official game module uses the upstream updater.
+    if (module == VersionModule.installer) {
       return false;
     }
-    if (module == VersionModule.module && FileHelper.hasPinnedLanModule) {
-      return false;
-    }
-    if (Platform.isMacOS && module == VersionModule.installer) {
-      return false;
-    }
-
-    if ((kDebugMode || kProfileMode) && module == VersionModule.installer) {
-      return false;
-    }
-
     channel ??= module.releaseChannel;
     final rq = ServiceVersionsRequest(id: module.name, channel: channel);
     final versions = await (service ?? sl.get<KyberGRPCService>())
@@ -216,15 +208,9 @@ class ModuleVersionService {
     KyberGRPCService? service,
     void Function(int, int)? onProgress,
   }) async {
-    if (module == VersionModule.installer && FileHelper.hasPinnedLanModule) {
+    if (module == VersionModule.installer) {
       _logger.info(
         'Skipping upstream launcher updates for the bundled LAN fork.',
-      );
-      return;
-    }
-    if (module == VersionModule.module && FileHelper.hasPinnedLanModule) {
-      _logger.info(
-        'Keeping bundled LAN module; upstream module updates are disabled for this bundle.',
       );
       return;
     }
@@ -304,6 +290,12 @@ class ModuleVersionService {
 
     await extract(filePath: downloadPath, targetDir: downloadDir);
 
+    if (module == VersionModule.module) {
+      // Kyber updates replace the stock DLL; restore our localization and LAN
+      // support after refreshing the official module's remaining files.
+      await FileHelper.installLanAddDllForOnline();
+    }
+
     File(downloadPath).deleteSync();
 
     await box.put(module.name, latestVersion.version);
@@ -319,7 +311,7 @@ class ModuleVersionService {
     } else {
       if (module == VersionModule.module) {
         File(
-          join(FileHelper.getModuleDirectory().path, 'VERSION'),
+          join(FileHelper.getOfficialModuleDirectory().path, 'VERSION'),
         ).writeAsStringSync(latestVersion.version);
       }
     }

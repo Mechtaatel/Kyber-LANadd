@@ -6,7 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 /// Show the version of the selected module, not a hard-coded fork release.
 Future<String> getLauncherVersionLabel() async {
   final info = await PackageInfo.fromPlatform();
-  final directory = FileHelper.getModuleDirectory();
+  final directory = FileHelper.getLanModuleDirectory();
   var moduleVersion = '—';
   try {
     if (await File('${directory.path}/LAN-MODULE').exists()) {
