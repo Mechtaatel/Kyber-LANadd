@@ -55,7 +55,11 @@ class _ReleaseChannelSelectorDialogState
             items: VersionModule.values.map<ComboBoxItem<VersionModule>>((e) {
               return ComboBoxItem<VersionModule>(
                 value: e,
-                child: Text(e.name),
+                child: Text(
+                  e == VersionModule.installer
+                      ? 'LAN ADD launcher + module (GitHub)'
+                      : 'Official Kyber module',
+                ),
               );
             }).toList(),
             onChanged: (item) {
@@ -70,10 +74,21 @@ class _ReleaseChannelSelectorDialogState
               color: kWhiteColor,
             ),
           ),
-          TextBox(
-            controller: _controller,
-            placeholder: 'Release channel',
-          ),
+          if (_selectedModule == VersionModule.installer)
+            ComboBox<String>(
+              value: _controller.text,
+              isExpanded: true,
+              items: const [
+                ComboBoxItem(value: 'beta', child: Text('BETA / PRE-RELEASE')),
+                ComboBoxItem(value: 'stable', child: Text('STABLE')),
+              ],
+              onChanged: (value) => setState(() => _controller.text = value!),
+            )
+          else
+            TextBox(
+              controller: _controller,
+              placeholder: 'Release channel',
+            ),
         ],
       ),
       actions: [

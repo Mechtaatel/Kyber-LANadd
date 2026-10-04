@@ -24,6 +24,26 @@ Kyber.dll, vivoxsdk.dll, ca_root.pem and VanillaBundleAggregation.kb. Updating t
 fork module requires installing a newer complete fork bundle. Do not place the
 marker next to an official DLL: a marker alone cannot add LAN support.
 
+LAN ADD launcher updates are checked on startup against published Releases of
+`Mechtaatel/Kyber-LANadd` on GitHub, including when using LAN mode. The default
+**beta** channel includes prereleases; **stable** includes only stable releases.
+Use **Settings → Accounts and Updates → LAN ADD updates** to check manually.
+Choose **Install** to download and verify the release's Windows installer, update
+the current installation directory and restart. The installer updates both the
+launcher and bundled LAN module. Close Battlefront II before installing.
+Network failures do not prevent launcher startup or LAN use.
+
+For a new Windows release, update `Launcher/assets/lan_add_version.txt` before
+building and publish the matching `v<version>` tag with exactly one asset named
+`Kyber-LAN-ADD-<version>-Setup.exe`. The packager rejects a stale version asset;
+Inno Setup uses the same version file by default. After resolving Flutter
+dependencies, `tools/build-launcher-windows.ps1` builds and packages the Windows
+launcher and installer using an existing module; it does not rebuild the DLL.
+GitHub supplies the asset's
+SHA-256, which the updater checks before running the installer. Draft releases,
+releases whose title starts with `[BROKEN]` or `BROKEN`, and releases containing
+`<!-- lan-add-update: disabled -->` in their notes are excluded from updates.
+
 Under New Server, **LAN ONLY** is available with OFF/ON buttons.
 Leave it disabled for normal public hosting. Both online and LAN-only sessions
 use the fork DLL; LAN-only hosts advertise locally and skip Kyber services.

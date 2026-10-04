@@ -74,7 +74,7 @@ class AppInitializationService {
     await ProtocolHelper.initialize();
 
     await _checkCompatibilityMode(context);
-    if (!LanMode.enabled) await _checkForUpdates(context);
+    if (Preferences.general.checkLanAddUpdates) await _checkForUpdates(context);
     await showOpenBetaDialog(context);
     await showRulesDialog(context);
     await _showPlatformWarnings();

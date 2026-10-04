@@ -1,23 +1,20 @@
 import 'dart:io';
 
 import 'package:collection/collection.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:kyber/kyber.dart';
 import 'package:kyber_collection/kyber_collection.dart';
+import 'package:kyber_launcher/core/services/lan_add_update_service.dart';
 import 'package:kyber_launcher/core/services/notification_service.dart';
+import 'package:kyber_launcher/core/services/windows_utils.dart';
+import 'package:kyber_launcher/features/maxima/services/maxima_instance_service.dart';
 import 'package:kyber_launcher/gen/rust/api/archive.dart';
 import 'package:kyber_launcher/injection_container.dart';
 import 'package:kyber_launcher/main.dart';
 import 'package:logging/logging.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:rhttp/rhttp.dart';
-import 'package:win32/win32.dart';
-import 'package:win32_registry/win32_registry.dart';
-
-const _launcherInstallerKey =
-    r'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\KyberLauncher_is1';
 
 enum VersionModule {
   //launcher,
@@ -39,9 +36,9 @@ extension VersionModuleExtension on VersionModule {
 
         return x.readAsStringSync().trim();
       case VersionModule.installer:
-        final info = await PackageInfo.fromPlatform();
-
-        return '${info.version}+${info.buildNumber}';
+        return (await rootBundle.loadString(
+          'assets/lan_add_version.txt',
+        )).trim();
     }
   }
 
@@ -64,7 +61,8 @@ extension VersionModuleExtension on VersionModule {
   }
 
   String get releaseChannel {
-    return box.get('${name}_release_channel') as String? ?? 'stable';
+    return box.get('${name}_release_channel') as String? ??
+        (this == VersionModule.installer ? 'beta' : 'stable');
   }
 
   List<String> get requiredFiles {
@@ -85,7 +83,7 @@ extension VersionModuleExtension on VersionModule {
   String get name {
     switch (this) {
       case VersionModule.installer:
-        return 'kyber-installer-win64';
+        return 'kyber-lan-add-installer-win64';
       case VersionModule.module:
         return 'kyber-module';
     }
@@ -95,40 +93,12 @@ extension VersionModuleExtension on VersionModule {
 class ModuleVersionService {
   final _logger = Logger('version_service');
 
-  bool isStandalone() {
-    // TODO: find a fix for this
-    return false;
-    RegistryKey? key;
-    try {
-      key = Registry.openPath(
-        RegistryHive.localMachine,
-        path: _launcherInstallerKey,
-      );
-
-      final installationPath = key.getStringValue('InstallLocation');
-      if (installationPath == null) {
-        return true;
-      }
-
-      return normalize(installationPath) !=
-          dirname(Platform.resolvedExecutable);
-    } on WindowsException catch (_) {
-      return true;
-    } catch (e) {
-      _logger.warning('Failed to check if standalone: $e');
-      return false;
-    } finally {
-      key?.close();
-    }
-  }
-
   Future<bool> checkChannel({
     required VersionModule module,
     required String channel,
   }) async {
     if (module == VersionModule.installer) {
-      final version = await getLatestLauncherVersion(channel);
-      return version != null;
+      return channel == 'stable' || channel == 'beta';
     }
 
     final rq = ServiceVersionsRequest(id: module.name, channel: channel);
@@ -144,10 +114,18 @@ class ModuleVersionService {
     String? channel,
     KyberGRPCService? service,
   }) async {
-    // Fork launcher releases are manual, even if lan-module was removed.
-    // Only the official game module uses the upstream updater.
     if (module == VersionModule.installer) {
-      return false;
+      if (!Platform.isWindows) return false;
+      try {
+        final latest = await LanAddUpdateService().latest(
+          channel: channel ?? module.releaseChannel,
+        );
+        final current = await module.getCurrentVersion();
+        return latest != null && current != null && latest.isNewerThan(current);
+      } on Object catch (error, stack) {
+        _logger.warning('LAN ADD update check failed', error, stack);
+        return false;
+      }
     }
     channel ??= module.releaseChannel;
     final rq = ServiceVersionsRequest(id: module.name, channel: channel);
@@ -170,21 +148,7 @@ class ModuleVersionService {
       return true;
     }
 
-    late bool updateAvailable;
-    if (module == VersionModule.installer) {
-      final latestVersion = await getLatestLauncherVersion();
-      if (latestVersion == 'DISCONTINUED' || latestVersion == null) {
-        _logger.info(
-          'The branch ${VersionModule.installer.releaseChannel} has been discontinued. Switching to main.',
-        );
-        await VersionModule.installer.setReleaseChannel('stable');
-        return true;
-      }
-
-      updateAvailable = latestVersion != currentVersion;
-    } else {
-      updateAvailable = latestVersion.version != currentVersion;
-    }
+    final updateAvailable = latestVersion.version != currentVersion;
 
     if (updateAvailable) {
       _logger.info(
@@ -209,12 +173,7 @@ class ModuleVersionService {
     void Function(int, int)? onProgress,
   }) async {
     if (module == VersionModule.installer) {
-      _logger.info(
-        'Skipping upstream launcher updates for the bundled LAN fork.',
-      );
-      return;
-    }
-    if (!kReleaseMode && module == VersionModule.installer) {
+      await _updateLanAdd(channel: channel, onProgress: onProgress);
       return;
     }
 
@@ -233,17 +192,6 @@ class ModuleVersionService {
             'No latest version found for "${module.name}" on channel "$channel".',
       );
       _logger.warning('No latest version found for ${module.name}');
-      return;
-    }
-
-    if (module == VersionModule.installer && isStandalone()) {
-      NotificationService.showNotification(
-        message:
-            'The standalone version of the Launcher cannot be automatically updated.',
-      );
-      _logger.warning(
-        'The standalone version of the Launcher cannot be automatically updated.',
-      );
       return;
     }
 
@@ -299,35 +247,69 @@ class ModuleVersionService {
     File(downloadPath).deleteSync();
 
     await box.put(module.name, latestVersion.version);
-    if (module == VersionModule.installer) {
-      await Process.run('sc', ['stop', 'MaximaBackgroundService']);
-      await Process.run(join(downloadDir, 'KyberLauncherInstaller.exe'), [
-        '/VERYSILENT',
-        '/FORCECLOSEAPPLICATIONS',
-        '/RESTARTAPPLICATIONS',
-      ], runInShell: true);
-
-      exit(0);
-    } else {
-      if (module == VersionModule.module) {
-        File(
-          join(FileHelper.getOfficialModuleDirectory().path, 'VERSION'),
-        ).writeAsStringSync(latestVersion.version);
-      }
-    }
+    File(
+      join(FileHelper.getOfficialModuleDirectory().path, 'VERSION'),
+    ).writeAsStringSync(latestVersion.version);
 
     _logger.info('Updated ${module.name} to version ${latestVersion.version}');
   }
 
   Future<String?> getLatestLauncherVersion([String? releaseChannel]) async {
     try {
-      final rawVersion = await Rhttp.getText(
-        'https://s3.kyber.gg/artifacts/launcher-versions/${releaseChannel ?? VersionModule.installer.releaseChannel}/latest-version',
+      final release = await LanAddUpdateService().latest(
+        channel: releaseChannel ?? VersionModule.installer.releaseChannel,
       );
-
-      return rawVersion.body.split(Platform.lineTerminator).first;
-    } catch (e) {
+      return release?.version.toString();
+    } on Object catch (error, stack) {
+      _logger.warning('LAN ADD update check failed', error, stack);
       return null;
+    }
+  }
+
+  Future<void> _updateLanAdd({
+    String? channel,
+    void Function(int, int)? onProgress,
+  }) async {
+    if (!Platform.isWindows) {
+      throw UnsupportedError('LAN ADD automatic installation is Windows-only');
+    }
+    void checkGameClosed() {
+      if (sl.isRegistered<MaximaInstanceService>() &&
+          sl.get<MaximaInstanceService>().instances.isNotEmpty) {
+        throw StateError('Close Battlefront II before updating LAN ADD.');
+      }
+    }
+
+    checkGameClosed();
+    final updater = LanAddUpdateService();
+    final release = await updater.latest(
+      channel: channel ?? VersionModule.installer.releaseChannel,
+      refresh: true,
+    );
+    final current = await VersionModule.installer.getCurrentVersion();
+    if (release == null || current == null || !release.isNewerThan(current)) {
+      throw StateError(
+        'No newer LAN ADD release is available on this channel.',
+      );
+    }
+    final directory = Directory(await VersionModule.installer.getDownloadDir());
+    _logger.info('Downloading LAN ADD ${release.version} from GitHub');
+    final installer = await updater.download(
+      release,
+      directory,
+      onProgress: onProgress,
+    );
+    checkGameClosed();
+    _logger.info('Verified LAN ADD installer SHA-256: ${release.sha256Digest}');
+    WindowsUtils.startUpdateInstaller(installer.path);
+    // ShellExecuteEx has completed the UAC prompt and started the installer.
+    // Close our files before Inno Setup replaces the application.
+    try {
+      await box.close();
+      await collectionBox.close();
+      await mapRotationBox.close();
+    } finally {
+      exit(0);
     }
   }
 }

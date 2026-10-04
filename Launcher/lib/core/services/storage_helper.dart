@@ -3,12 +3,10 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:hive_ce/hive.dart';
-import 'package:kyber/kyber.dart';
 import 'package:kyber_collection/kyber_collection.dart';
 import 'package:kyber_launcher/core/services/app_settings.dart';
 import 'package:kyber_launcher/core/services/module_version_service.dart';
 import 'package:kyber_launcher/features/map_rotation/models/map_rotation_entry.dart';
-import 'package:kyber_launcher/injection_container.dart';
 import 'package:kyber_launcher/main.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart';
@@ -43,21 +41,10 @@ class StorageHelper {
   }
 
   static Future<void> saveCurrentVersion() async {
-    if (!box.containsKey(VersionModule.installer.name) && kReleaseMode) {
-      final versions = await sl.get<KyberGRPCService>().launcherClient.versions(
-        ServiceVersionsRequest(
-          id: VersionModule.installer.name,
-          channel: VersionModule.installer.releaseChannel,
-        ),
-      );
-      final latestVersion = versions.versions.where((x) => x.isLatest);
-      if (latestVersion.isNotEmpty) {
-        await box.put(
-          VersionModule.installer.name,
-          latestVersion.first.version,
-        );
-      }
-    }
+    await box.put(
+      VersionModule.installer.name,
+      await VersionModule.installer.getCurrentVersion(),
+    );
   }
 
   static Future<Box<T>> _openBox<T>(String name) async {

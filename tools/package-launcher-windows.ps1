@@ -6,7 +6,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
-if ($Name -notmatch '^[a-zA-Z0-9_-]+$') { throw 'Invalid package name' }
+if ($Name -notmatch '^[a-zA-Z0-9._-]+$') { throw 'Invalid package name' }
 $release = Join-Path $repo 'Launcher/build/windows/x64/runner/Release'
 $destination = Join-Path $repo "artifacts/$Name"
 $archive = "$destination.zip"
@@ -17,6 +17,16 @@ $requiredRelease = @('kyber_launcher.exe', 'flutter_windows.dll', 'rust_lib.dll'
 $requiredMaxima = @('maxima-bootstrap.exe', 'maxima-service.exe')
 $requiredModule = @('Kyber.dll', 'vivoxsdk.dll', 'ca_root.pem', 'VanillaBundleAggregation.kb', 'LAN-MODULE', 'VERSION')
 $requiredRuntime = @('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
+$sourceVersionPath = Join-Path $repo 'Launcher/assets/lan_add_version.txt'
+$builtVersionPath = Join-Path $release 'data/flutter_assets/assets/lan_add_version.txt'
+if (!(Test-Path -LiteralPath $builtVersionPath -PathType Leaf)) {
+    throw 'LAN ADD version asset is missing from the build; rebuild the launcher.'
+}
+$sourceVersion = [IO.File]::ReadAllText($sourceVersionPath).Trim()
+$builtVersion = [IO.File]::ReadAllText($builtVersionPath).Trim()
+if ($sourceVersion -ne $builtVersion) {
+    throw "Built LAN ADD version $builtVersion does not match source $sourceVersion; rebuild the launcher."
+}
 foreach ($group in @(
     @{ Root=$release; Files=$requiredRelease },
     @{ Root=$MaximaDirectory; Files=$requiredMaxima },

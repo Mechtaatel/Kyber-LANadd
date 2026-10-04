@@ -17,6 +17,11 @@ class Preferences {
 }
 
 class General {
+  bool get checkLanAddUpdates =>
+      box.get('check_lan_add_updates', defaultValue: true) as bool;
+
+  set checkLanAddUpdates(bool value) => box.put('check_lan_add_updates', value);
+
   int? get lastSelectedModBrowserCategory =>
       box.get('lastSelectedModBrowserCategory') as int?;
 

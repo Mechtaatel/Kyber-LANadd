@@ -1,6 +1,8 @@
 #define MyAppName "KYBER Launcher LAN ADD"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.0-beta.1"
+  #define VersionFile FileOpen("..\assets\lan_add_version.txt")
+  #define MyAppVersion Trim(FileRead(VersionFile))
+  #expr FileClose(VersionFile)
 #endif
 #define MyAppPublisher "Mechtaatel"
 #define MyAppURL "https://github.com/Mechtaatel/Kyber-LANadd"
@@ -12,6 +14,15 @@
 #ifndef SetupOutputName
   #define SetupOutputName "Kyber-LAN-ADD-Beta-1-Setup"
 #endif
+#if !FileExists(BundleSourceDir + "\data\flutter_assets\assets\lan_add_version.txt")
+  #error "LAN ADD version asset is missing from the bundle. Rebuild and package the launcher."
+#endif
+#define BundleVersionFile FileOpen(BundleSourceDir + "\data\flutter_assets\assets\lan_add_version.txt")
+#define BundleVersion Trim(FileRead(BundleVersionFile))
+#expr FileClose(BundleVersionFile)
+#if BundleVersion != MyAppVersion
+  #error "Installer and bundled LAN ADD versions do not match."
+#endif
 
 [Setup]
 AppId={#AppId}
@@ -21,7 +32,7 @@ AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
-AppUpdatesURL={#MyAppURL}/releases/latest
+AppUpdatesURL={#MyAppURL}/releases
 DefaultDirName={autopf}\KYBER Launcher LAN ADD
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
@@ -59,8 +70,14 @@ Root: HKCR; Subkey: "KyberLauncherLANADD.kmodfile\shell\open\command"; ValueType
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExeName}"; Flags: nowait runasoriginaluser; Check: IsLanAddUpdate
 
 [Code]
+function IsLanAddUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:LANADDUPDATE|0}') = '1';
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   ModuleDll: String;
@@ -72,7 +89,7 @@ begin
     OriginalDll := ModuleDll + '.lan-add-original';
     if FileExists(OriginalDll) then
     begin
-      if FileCopy(OriginalDll, ModuleDll, True) then
+      if CopyFile(OriginalDll, ModuleDll, True) then
         DeleteFile(OriginalDll)
       else
         MsgBox('Could not restore the original Kyber.dll. The backup remains at:' + #13#10 + OriginalDll,

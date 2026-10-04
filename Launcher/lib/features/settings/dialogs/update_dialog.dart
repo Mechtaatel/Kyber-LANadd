@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:kyber_launcher/core/config/colors.dart';
+import 'package:kyber_launcher/core/services/lan_add_update_service.dart';
 import 'package:kyber_launcher/core/services/module_version_service.dart';
 import 'package:kyber_launcher/core/services/notification_service.dart';
 import 'package:kyber_launcher/core/services/windows_utils.dart';
@@ -27,25 +30,63 @@ class _UpdateDialogState extends State<UpdateDialog> {
   bool isCompMode = false;
   int total = 0;
   int current = 0;
+  bool checking = false;
+  String? installedVersion;
+  LanAddRelease? release;
+  String? checkError;
 
   @override
   void initState() {
+    super.initState();
     if (WindowsUtils.isWindowsCompMode()) {
       isCompMode = true;
-    } else if (widget.forceInstall && widget.module == VersionModule.module) {
-      startDownload();
     }
-
-    super.initState();
+    if (widget.module == VersionModule.installer) {
+      unawaited(loadLauncherUpdate());
+    } else if (widget.forceInstall && !isCompMode) {
+      unawaited(startDownload());
+    }
   }
 
-  void startDownload() async {
-    if (widget.module == VersionModule.installer) {
-      await launchUrlString(
-        'https://github.com/Mechtaatel/Kyber-LANadd/releases',
+  Future<void> loadLauncherUpdate() async {
+    setState(() {
+      checking = true;
+      checkError = null;
+      release = null;
+    });
+    try {
+      final installed = await VersionModule.installer.getCurrentVersion();
+      final latest = await LanAddUpdateService().latest(
+        channel: VersionModule.installer.releaseChannel,
+        refresh: true,
       );
-      return;
+      if (!mounted) return;
+      setState(() {
+        installedVersion = installed;
+        release = latest;
+      });
+    } on Object catch (_) {
+      if (!mounted) return;
+      setState(
+        () => checkError = 'Could not check GitHub for updates. Try again.',
+      );
+    } finally {
+      if (mounted) setState(() => checking = false);
     }
+    if (mounted &&
+        widget.forceInstall &&
+        launcherUpdateAvailable &&
+        !isCompMode) {
+      await startDownload();
+    }
+  }
+
+  bool get launcherUpdateAvailable =>
+      installedVersion != null &&
+      release != null &&
+      release!.isNewerThan(installedVersion!);
+
+  Future<void> startDownload() async {
     setState(() => installing = true);
     try {
       await ModuleVersionService().updateVersion(
@@ -59,10 +100,10 @@ class _UpdateDialogState extends State<UpdateDialog> {
         },
       );
       if (mounted) Navigator.pop(context);
-    } catch (error) {
+    } on Object catch (error) {
       if (!mounted) return;
       setState(() => installing = false);
-      NotificationService.error(message: 'Module update failed: $error');
+      NotificationService.error(message: 'Update failed: $error');
     }
   }
 
@@ -70,7 +111,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
   Widget build(BuildContext context) {
     return KyberContentDialog(
       title: Text(
-        '${widget.module == VersionModule.module ? 'Module' : 'Launcher'} Update'
+        '${widget.module == VersionModule.module ? 'Module' : 'LAN ADD'} Update'
             .toUpperCase(),
       ),
       constraints: const BoxConstraints(
@@ -83,11 +124,25 @@ class _UpdateDialogState extends State<UpdateDialog> {
           text: 'Ignore',
         ),
         KyberButton(
-          onPressed: !installing ? startDownload : null,
+          onPressed: installing || checking
+              ? null
+              : widget.module == VersionModule.installer &&
+                    !launcherUpdateAvailable
+              ? loadLauncherUpdate
+              : startDownload,
           text: widget.module == VersionModule.installer
-              ? 'OPEN RELEASES'
+              ? launcherUpdateAvailable
+                    ? 'INSTALL'
+                    : 'CHECK AGAIN'
               : 'Install',
         ),
+        if (widget.module == VersionModule.installer)
+          KyberButton(
+            onPressed: installing
+                ? null
+                : () => launchUrlString(lanAddReleasesUrl),
+            text: 'VIEW RELEASES',
+          ),
       ],
       content: SizedBox(
         height: 400,
@@ -126,6 +181,24 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 ),
               ],
               if (!installing) ...[
+                if (widget.module == VersionModule.installer) ...[
+                  if (checking)
+                    const ProgressRing()
+                  else
+                    Text(
+                      checkError ??
+                          (launcherUpdateAvailable
+                              ? 'LAN ADD ${release!.version} is available.'
+                              : release == null
+                              ? 'No Windows release is published on this channel.'
+                              : 'LAN ADD is up to date on this release channel.'),
+                    ),
+                  if (installedVersion != null) ...[
+                    const SizedBox(height: 12),
+                    Text('Installed: LAN ADD $installedVersion'),
+                  ],
+                  const SizedBox(height: 12),
+                ],
                 if (isCompMode) ...[
                   const Text(
                     'You are running the launcher in compatibility mode. This may cause issues with the update process.',
@@ -137,7 +210,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 ],
                 Text(
                   widget.module == VersionModule.installer
-                      ? 'LAN ADD launcher and LAN module updates are available from our GitHub Releases. The official Kyber game module updates separately.'
+                      ? 'Updates come from Mechtaatel/Kyber-LANadd on GitHub. Install updates the launcher and LAN module together, then restarts the launcher. Close Battlefront II first.'
                       : 'Update the official Kyber game module. Your LAN module will not be changed.',
                   style: TextStyle(
                     fontSize: 15,

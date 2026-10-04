@@ -68,7 +68,7 @@ class AccountsAndUpdates extends StatelessWidget {
                       context: context,
                       builder: (_) => const ResetTokenDialog(),
                     );
-                    
+
                     if (result != true) {
                       return;
                     }
@@ -223,37 +223,43 @@ class AccountsAndUpdates extends StatelessWidget {
           ),
         ),
         const SettingsHeader(title: 'UPDATES'),
-        KyberTable(
-          items: [
-            KyberTableItem.switchButton(
-              title: 'Automatically Update',
-              value: true,
-            ),
-            KyberTableItem.button(
-              title: 'Release Channel',
-              text: 'Select',
-              onClick: () async {
-                await showKyberDialog(
-                  context: context,
-                  builder: (_) => const ReleaseChannelSelectorDialog(),
-                );
-                await Sentry.configureScope((scope) async {
-                  await scope.setTag(
-                    'release-channel',
-                    VersionModule.installer.releaseChannel,
-                  );
-                });
-              },
-            ),
-            KyberTableItem.button(
-              title: 'Force update',
-              text: 'UPDATE NOW',
-              onClick: () => showKyberDialog(
-                context: context,
-                builder: (_) => const UpdateDialog(),
+        HiveListener(
+          box: box,
+          keys: const ['check_lan_add_updates'],
+          builder: (_) => KyberTable(
+            items: [
+              KyberTableItem.switchButton(
+                title: 'Check for updates automatically',
+                value: Preferences.general.checkLanAddUpdates,
+                onChange: (value) =>
+                    Preferences.general.checkLanAddUpdates = value,
               ),
-            ),
-          ],
+              KyberTableItem.button(
+                title: 'Release Channel',
+                text: 'Select',
+                onClick: () async {
+                  await showKyberDialog(
+                    context: context,
+                    builder: (_) => const ReleaseChannelSelectorDialog(),
+                  );
+                  await Sentry.configureScope((scope) async {
+                    await scope.setTag(
+                      'release-channel',
+                      VersionModule.installer.releaseChannel,
+                    );
+                  });
+                },
+              ),
+              KyberTableItem.button(
+                title: 'LAN ADD updates',
+                text: 'CHECK FOR UPDATES',
+                onClick: () => showKyberDialog(
+                  context: context,
+                  builder: (_) => const UpdateDialog(),
+                ),
+              ),
+            ],
+          ),
         ),
         const SettingsHeader(title: 'OTHER'),
         HiveListener(

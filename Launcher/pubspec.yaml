@@ -88,6 +88,7 @@ dependencies:
   path: ^1.9.0
   path_provider: ^2.0.9
   protobuf: ^6.0.0
+  pub_semver: ^2.2.0
   replay_bloc: ^0.3.0
   rxdart: ^0.28.0
   screen_retriever: ^0.2.0
