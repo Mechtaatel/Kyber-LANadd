@@ -18,6 +18,7 @@ cc_library(
         "IXWebSocket/ixwebsocket/IXSelectInterruptEvent.cpp",
         "IXWebSocket/ixwebsocket/IXSetThreadName.cpp",
         "IXWebSocket/ixwebsocket/IXSocket.cpp",
+        "IXWebSocket/ixwebsocket/IXSocketOpenSSL.cpp",
         "IXWebSocket/ixwebsocket/IXSocketConnect.cpp",
         "IXWebSocket/ixwebsocket/IXSocketFactory.cpp",
         "IXWebSocket/ixwebsocket/IXSocketServer.cpp",
@@ -42,5 +43,8 @@ cc_library(
         "IXWebSocket/ixwebsocket/*.h",
     ]),
     includes = ["IXWebSocket"],
+    local_defines = ["IXWEBSOCKET_USE_TLS", "IXWEBSOCKET_USE_OPEN_SSL"],
+    deps = ["@boringssl//:ssl"],
+    linkopts = ["crypt32.lib", "shlwapi.lib"],
     visibility = ["//visibility:public"],
 )

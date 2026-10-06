@@ -18,8 +18,10 @@ Portable fork bundles include a `lan-module` directory next to the launcher/CLI.
 For Windows online play, the launcher installs the bundled fork `Kyber.dll` into
 `%ProgramData%/Kyber/Module` so Cyrillic localization works there too. The first
 stock DLL is saved as `Kyber.dll.lan-add-original` and restored when LAN ADD is
-uninstalled. Kyber module updates refresh the accompanying official files, then
-the launcher restores its bundled DLL. Keep the entire LAN bundle with
+uninstalled. Missing or empty accompanying files are restored from the local
+bundle; the launcher does not download a separate official module. The fork's
+version is recorded in `LAN-ADD-VERSION`, leaving the upstream `VERSION` intact.
+Keep the entire LAN bundle with
 Kyber.dll, vivoxsdk.dll, ca_root.pem and VanillaBundleAggregation.kb. Updating the
 fork module requires installing a newer complete fork bundle. Do not place the
 marker next to an official DLL: a marker alone cannot add LAN support.

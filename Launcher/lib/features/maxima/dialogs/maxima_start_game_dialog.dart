@@ -55,13 +55,13 @@ class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
           widget.initializeRequest != null &&
               widget.initializeRequest!.hasJoinServer() &&
               !widget.initializeRequest!.joinServer.hasId();
-      final available =
-          !lanOnly &&
-          await ModuleVersionService().updateAvailable(
-            module: VersionModule.module,
-          );
-      if (available) {
-        try {
+      try {
+        final available =
+            !lanOnly &&
+            await ModuleVersionService().updateAvailable(
+              module: VersionModule.module,
+            );
+        if (available) {
           setState(() => updating = true);
 
           await ModuleVersionService().updateVersion(
@@ -73,28 +73,28 @@ class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
           }
 
           setState(() => updating = false);
-        } catch (e, st) {
-          if (mounted) {
-            setState(() => updating = false);
-          }
-
-          final message = switch (e) {
-            AnyhowException() => e.message,
-            PanicException() => e.message,
-            _ => e.toString(),
-          };
-
-          Logger.root.severe('Failed to update Kyber Module', e, st);
-          await Sentry.captureException(e, stackTrace: st);
-          NotificationService.showNotification(
-            message: 'Failed to update Kyber Module: $message',
-            severity: InfoBarSeverity.error,
-          );
-
-          Navigator.of(context).pop();
-
-          return;
         }
+      } catch (e, st) {
+        if (mounted) {
+          setState(() => updating = false);
+        }
+
+        final message = switch (e) {
+          AnyhowException() => e.message,
+          PanicException() => e.message,
+          _ => e.toString(),
+        };
+
+        Logger.root.severe('Failed to prepare bundled Kyber Module', e, st);
+        await Sentry.captureException(e, stackTrace: st);
+        NotificationService.showNotification(
+          message: 'Failed to prepare bundled Kyber Module: $message',
+          severity: InfoBarSeverity.error,
+        );
+
+        if (mounted) Navigator.of(context).pop();
+
+        return;
       }
 
       final req = widget.initializeRequest ?? .new();
@@ -261,7 +261,7 @@ class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
               const SizedBox(width: 15),
               if (updating)
                 Text(
-                  'Updating Kyber Module...',
+                  'Preparing bundled Kyber Module...',
                   style: FluentTheme.of(context).typography.bodyLarge,
                 ),
               if (!updating)
@@ -274,8 +274,9 @@ class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
           const SizedBox(height: 10),
           Text(
             'Please wait while the game is starting. This may take a few seconds.',
-            style: FluentTheme.of(context).typography.body
-                ?.copyWith(color: kWhiteColor),
+            style: FluentTheme.of(
+              context,
+            ).typography.body?.copyWith(color: kWhiteColor),
           ),
           const SizedBox(height: 10),
           Text(lastEvent ?? '', style: FluentTheme.of(context).typography.body),

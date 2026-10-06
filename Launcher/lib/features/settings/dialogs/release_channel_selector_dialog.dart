@@ -52,16 +52,16 @@ class _ReleaseChannelSelectorDialogState
           ComboBox<VersionModule>(
             value: _selectedModule,
             isExpanded: true,
-            items: VersionModule.values.map<ComboBoxItem<VersionModule>>((e) {
-              return ComboBoxItem<VersionModule>(
-                value: e,
-                child: Text(
-                  e == VersionModule.installer
-                      ? 'LAN ADD launcher + module (GitHub)'
-                      : 'Official Kyber module',
-                ),
-              );
-            }).toList(),
+            items: const [VersionModule.installer]
+                .map<ComboBoxItem<VersionModule>>((e) {
+                  return ComboBoxItem<VersionModule>(
+                    value: e,
+                    child: Text(
+                      'LAN ADD launcher + module (GitHub)',
+                    ),
+                  );
+                })
+                .toList(),
             onChanged: (item) {
               setState(() => _selectedModule = item!);
               _controller.text = item!.releaseChannel;

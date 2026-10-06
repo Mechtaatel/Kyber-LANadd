@@ -16,13 +16,15 @@ import 'package:kyber_launcher/features/maxima/providers/maxima_cubit.dart';
 import 'package:kyber_launcher/features/mods/services/mod_service.dart';
 import 'package:kyber_launcher/features/navigation_bar/providers/status_cubit.dart';
 import 'package:kyber_launcher/features/navigation_bar/widgets/action_bar.dart';
-import 'package:kyber_launcher/features/navigation_bar/widgets/title_bar.dart' as kl;
+import 'package:kyber_launcher/features/navigation_bar/widgets/title_bar.dart'
+    as kl;
 import 'package:kyber_launcher/features/setup/widgets/setup_container.dart';
 import 'package:kyber_launcher/gen/assets.gen.dart';
 import 'package:kyber_launcher/gen/fonts.gen.dart';
 import 'package:kyber_launcher/injection_container.dart';
 import 'package:kyber_launcher/shared/ui/buttons/button.dart';
 import 'package:kyber_launcher/shared/ui/utils/background_blur.dart';
+import 'package:logging/logging.dart';
 
 class WalkThroughSetup extends StatefulWidget {
   const WalkThroughSetup({super.key});
@@ -42,7 +44,20 @@ class _WalkThroughSetupState extends State<WalkThroughSetup> {
     Preferences.general.modsPath = FileHelper.getModsDirectory().path;
     Timer.run(() => BlocProvider.of<DownloadCubit>(context));
 
-    ModuleVersionService().updateVersion(module: VersionModule.module);
+    unawaited(
+      ModuleVersionService()
+          .updateVersion(module: VersionModule.module)
+          .catchError((Object error, StackTrace stack) {
+            Logger(
+              'setup',
+            ).severe('Failed to prepare bundled Kyber Module', error, stack);
+            if (mounted) {
+              NotificationService.error(
+                message: 'Failed to prepare bundled Kyber Module: $error',
+              );
+            }
+          }),
+    );
 
     super.initState();
   }

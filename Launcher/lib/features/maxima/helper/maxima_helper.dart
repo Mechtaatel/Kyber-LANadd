@@ -180,7 +180,12 @@ class MaximaHelper {
     if (Platform.isWindows) {
       moduleDirectory = await prepareModuleLaunchDirectory(moduleDirectory);
     }
-    final versionFile = File(p.join(moduleDirectory.path, 'VERSION'));
+    final versionFile = File(
+      p.join(
+        moduleDirectory.path,
+        lanOnly ? 'VERSION' : 'LAN-ADD-VERSION',
+      ),
+    );
     final moduleVersion = await versionFile.exists()
         ? (await versionFile.readAsString()).trim()
         : 'unknown';

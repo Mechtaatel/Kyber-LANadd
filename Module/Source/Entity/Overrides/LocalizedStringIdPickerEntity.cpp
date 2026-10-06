@@ -24,11 +24,31 @@ void LocalizedStringIdPickerEntity::PropertyChanged(PropertyModification* modifi
 // Gets the Sid input to the entity either from a connection or the entity data and creates a LocalizedStringId instance to output to StringId
 void LocalizedStringIdPickerEntity::GetLocalized()
 {
+    // Entities can be created without a consumer for StringId. Frostbite's
+    // property setter requires a bound output cache; do not call it otherwise.
+    if (!m_localizedStringId.HasConnection())
+    {
+        return;
+    }
+
     auto sidField = GetFieldReader<char*>("Sid");
-    std::string id = sidField.HasConnection() && sidField.HasConnectionValue() ? sidField.Get() : GetData()->Sid;
+    const char* sid = GetData()->Sid;
+    if (sidField.HasConnectionValue())
+    {
+        const void* value = sidField.PropertyReaderBase::Get();
+        if (value != nullptr)
+        {
+            sid = *static_cast<char* const*>(value);
+        }
+    }
+    std::string id = sid != nullptr ? sid : "";
     int32_t stringHash = CalcStringHash(id);
 
     LocalizedStringId* container = g_program->m_entityManager->CreateContainer<LocalizedStringId>("LocalizedStringId");
+    if (container == nullptr)
+    {
+        return;
+    }
     container->StringHash = stringHash;
 
     m_localizedStringId = container;

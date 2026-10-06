@@ -1,5 +1,6 @@
 param(
     [string]$Name,
+    [string]$InstallerName,
     [string]$ToolsRoot = 'D:\dev\kyber-tools',
     [string]$PubCache = 'D:\dev\Dart\PubCache',
     [string]$CargoHome = 'D:\dev\Rust\.cargo',
@@ -17,7 +18,8 @@ if ($version -notmatch '^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$') { throw 'Invalid L
 if (!$Name) { $Name = "kyber-lan-add-$version-windows" }
 if ($Name -notmatch '^[a-zA-Z0-9._-]+$') { throw 'Invalid package name' }
 $flutter = Join-Path $ToolsRoot 'flutter/bin/flutter.bat'
-$setupName = "Kyber-LAN-ADD-$version-Setup"
+$setupName = if ($InstallerName) { $InstallerName } else { "Kyber-LAN-ADD-$version-Setup" }
+if ($setupName -notmatch '^[a-zA-Z0-9._-]+$') { throw 'Invalid installer output name' }
 $setupPath = Join-Path $repo "artifacts/$setupName.exe"
 foreach ($file in @($flutter, $InstallerCompiler)) {
     if (!(Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing build tool: $file" }

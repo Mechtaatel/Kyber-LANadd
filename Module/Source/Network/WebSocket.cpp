@@ -15,6 +15,9 @@
 #include <ixwebsocket/IXWebSocket.h>
 #include <ixwebsocket/IXNetSystem.h>
 
+#include <fstream>
+#include <sstream>
+
 #ifdef SIMULATE_OLD_PROXY
     #include <nlohmann/json.hpp>
 #endif
@@ -27,13 +30,25 @@ WebSocket::WebSocket(std::string id, uint32_t index, std::shared_ptr<ReceiveQueu
     , m_receiveQueue(queue)
 {
     m_socket = std::make_shared<ix::WebSocket>();
+
+    // Match the launcher's wss proxy probes. Keep certificate and hostname
+    // verification enabled, including when the module is loaded under Wine.
+    ix::SocketTLSOptions tlsOptions;
+    std::ifstream certificates(PlatformUtils::GetModulePath() / "ca_root.pem");
+    std::stringstream roots;
+    roots << certificates.rdbuf();
+    if (!roots.str().empty())
+    {
+        tlsOptions.caFile = roots.str();
+    }
+    m_socket->setTLSOptions(tlsOptions);
 }
 
 bool WebSocket::ConnectAsServer(const std::string& proxyAddress, const std::string& joinToken)
 {
     Close();
 
-    m_socket->setUrl("ws://" + proxyAddress + "/server");
+    m_socket->setUrl("wss://" + proxyAddress + "/server");
 
     ix::WebSocketHttpHeaders headers;
     headers["Compression"] = "None";
@@ -49,7 +64,7 @@ bool WebSocket::ConnectAsClient(const std::string& proxyAddress, const std::stri
 {
     Close();
 
-    m_socket->setUrl("ws://" + proxyAddress + "/client");
+    m_socket->setUrl("wss://" + proxyAddress + "/client");
 
     ix::WebSocketHttpHeaders headers;
     headers["Compression"] = "None";
@@ -63,7 +78,7 @@ bool WebSocket::ConnectAsClient(const std::string& proxyAddress, const std::stri
 
 void WebSocket::Start()
 {
-    KYBER_LOG(Debug, "Connecting to " << m_socket->getUrl());
+    KYBER_LOG(Info, "[Network] Proxy Connection '" << m_id << "' connecting to " << m_socket->getUrl());
 
     m_socket->setPingInterval(10);
     m_socket->disablePerMessageDeflate();

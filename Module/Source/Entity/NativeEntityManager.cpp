@@ -802,6 +802,11 @@ DataContainer* EntityManager::InternalCreateContainer(const std::string& name) c
     }
 
     DataContainer* container = DataContainerClassInfo_createInstance(type, FB_GLOBAL_ARENA, true, true);
+    if (container == nullptr)
+    {
+        KYBER_LOG(Error, "[Entity] Failed to allocate container for type " << name);
+        return nullptr;
+    }
     container->m_dcType = type;
     return container;
 }

@@ -1,20 +1,16 @@
 import 'dart:io';
 
-import 'package:collection/collection.dart';
 import 'package:flutter/services.dart';
 import 'package:kyber/kyber.dart';
 import 'package:kyber_collection/kyber_collection.dart';
 import 'package:kyber_launcher/core/services/lan_add_update_service.dart';
-import 'package:kyber_launcher/core/services/notification_service.dart';
 import 'package:kyber_launcher/core/services/windows_utils.dart';
 import 'package:kyber_launcher/features/maxima/services/maxima_instance_service.dart';
-import 'package:kyber_launcher/gen/rust/api/archive.dart';
 import 'package:kyber_launcher/injection_container.dart';
 import 'package:kyber_launcher/main.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:rhttp/rhttp.dart';
 
 enum VersionModule {
   //launcher,
@@ -27,7 +23,7 @@ extension VersionModuleExtension on VersionModule {
     switch (this) {
       case VersionModule.module:
         final x = File(
-          join(FileHelper.getOfficialModuleDirectory().path, 'VERSION'),
+          join(FileHelper.getLanModuleDirectory().path, 'VERSION'),
         );
 
         if (!x.existsSync()) {
@@ -101,12 +97,8 @@ class ModuleVersionService {
       return channel == 'stable' || channel == 'beta';
     }
 
-    final rq = ServiceVersionsRequest(id: module.name, channel: channel);
-    final versions = await sl.get<KyberGRPCService>().launcherClient.versions(
-      rq,
-    );
-    return versions.versions.isNotEmpty &&
-        versions.versions.firstWhereOrNull((x) => x.isLatest) != null;
+    // The module is versioned and distributed with the LAN ADD installer.
+    return false;
   }
 
   Future<bool> updateAvailable({
@@ -127,42 +119,7 @@ class ModuleVersionService {
         return false;
       }
     }
-    channel ??= module.releaseChannel;
-    final rq = ServiceVersionsRequest(id: module.name, channel: channel);
-    final versions = await (service ?? sl.get<KyberGRPCService>())
-        .launcherClient
-        .versions(rq);
-
-    final currentVersion = await module.getCurrentVersion();
-    final latestVersion = versions.versions.firstWhereOrNull((x) => x.isLatest);
-    if (currentVersion == null) {
-      _logger.info('No version found for ${module.name}.');
-      return true;
-    }
-
-    if (latestVersion == null) {
-      _logger.info(
-        'No latest version found for ${module.name}. Switching to stable.',
-      );
-      await module.setReleaseChannel('stable');
-      return true;
-    }
-
-    final updateAvailable = latestVersion.version != currentVersion;
-
-    if (updateAvailable) {
-      _logger.info(
-        'New version available for ${module.name}: ${latestVersion.version}',
-      );
-      return true;
-    }
-
-    if (module.requiredFiles.any((x) => !File(x).existsSync())) {
-      _logger.info('Required files missing for ${module.name}.');
-      return true;
-    }
-
-    return false;
+    return !await FileHelper.isLanAddModuleInstalledForOnline();
   }
 
   Future<void> updateVersion({
@@ -177,81 +134,11 @@ class ModuleVersionService {
       return;
     }
 
-    final x = service ?? sl.get<KyberGRPCService>();
-    channel ??= module.releaseChannel;
-    final versions = await x.launcherClient.versions(
-      ServiceVersionsRequest(id: module.name, channel: channel),
+    _logger.info('Preparing bundled LAN ADD module (no download)');
+    await FileHelper.installLanAddDllForOnline();
+    _logger.info(
+      'Bundled LAN ADD module ready: ${await module.getCurrentVersion()}',
     );
-    final latestVersion = versions.versions
-        .where((x) => x.isLatest)
-        .firstOrNull;
-
-    if (latestVersion == null) {
-      NotificationService.showNotification(
-        message:
-            'No latest version found for "${module.name}" on channel "$channel".',
-      );
-      _logger.warning('No latest version found for ${module.name}');
-      return;
-    }
-
-    _logger.info('Updating ${module.name} to version ${latestVersion.version}');
-
-    final download = await x.launcherClient.downloadUrl(
-      ServiceVersionDownloadUrlRequest(
-        id: module.name,
-        version: latestVersion.version,
-        channel: channel,
-      ),
-    );
-    final filename = basename(download.url).split('?').first;
-    final downloadDir = await module.getDownloadDir();
-    final downloadPath = join(downloadDir, filename);
-
-    _logger.fine('Downloading to $downloadPath');
-
-    final file = File(downloadPath);
-    if (file.existsSync()) {
-      file.deleteSync();
-    }
-
-    file.createSync(recursive: true);
-
-    final raf = file.openSync(mode: FileMode.write);
-
-    try {
-      final stream = await Rhttp.getStream(
-        download.url,
-        onReceiveProgress: onProgress,
-      );
-
-      await stream.body.forEach(raf.writeFromSync);
-    } finally {
-      raf.closeSync();
-    }
-
-    if (!Directory(downloadDir).existsSync()) {
-      Directory(downloadDir).createSync();
-    }
-
-    _logger.fine('Extracting artifact...');
-
-    await extract(filePath: downloadPath, targetDir: downloadDir);
-
-    if (module == VersionModule.module) {
-      // Kyber updates replace the stock DLL; restore our localization and LAN
-      // support after refreshing the official module's remaining files.
-      await FileHelper.installLanAddDllForOnline();
-    }
-
-    File(downloadPath).deleteSync();
-
-    await box.put(module.name, latestVersion.version);
-    File(
-      join(FileHelper.getOfficialModuleDirectory().path, 'VERSION'),
-    ).writeAsStringSync(latestVersion.version);
-
-    _logger.info('Updated ${module.name} to version ${latestVersion.version}');
   }
 
   Future<String?> getLatestLauncherVersion([String? releaseChannel]) async {

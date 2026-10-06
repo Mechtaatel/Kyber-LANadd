@@ -35,6 +35,7 @@ Future<Directory> prepareModuleLaunchDirectory(
           'ca_root.pem',
           'VanillaBundleAggregation.kb',
           'VERSION',
+          'LAN-ADD-VERSION',
           'LAN-MODULE',
         }.contains(name)) {
       continue;

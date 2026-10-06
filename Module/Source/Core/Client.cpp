@@ -213,7 +213,12 @@ __int64 ClientStateChangeHk(__int64 inst, ClientState currentClientState, Client
     }
     else if (currentClientState == ClientState_Ingame)
     {
-        g_program->GetAPI()->GetLauncherInterface()->OnServerJoined();
+        // The local frontend also reaches Ingame after a disconnect. It is not
+        // a successful reconnection to the remote server.
+        if (g_program->m_client->m_connected || server->m_runningHosted)
+        {
+            g_program->GetAPI()->GetLauncherInterface()->OnServerJoined();
+        }
         g_program->m_allowInteraction = true;
         if (server->m_runningHosted)
         {
