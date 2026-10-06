@@ -5,3 +5,24 @@ CLI/lib/src/version.dart
 pubspec.lock
 pubspec_overrides.yaml
 /artifacts/
+
+# Local regression checks and test harnesses (not part of the fork release).
+/Module/Tests/
+/tools/lan_tests/
+/tools/test_*.py
+/tools/check_module_launch_directory.dart
+/tools/run-lan-tests.sh
+/tools/run-localization-tests.cmd
+/CLI/tool/smoke-linux.sh
+
+# Local Python caches and test reports.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.coverage.*
+
+# Diagnostic output may contain local paths and account/session information.
+*.log
+*.dmp
+*.mdmp
