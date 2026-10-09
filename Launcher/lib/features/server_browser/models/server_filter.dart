@@ -33,33 +33,104 @@ extension ServerTypeExtension on ServerRegion {
   }
 }
 
-enum GameType { all, modded, vanilla }
-
-// api should return this at some point
-const Map<List<String>, ServerRegion> regionMappings = {
-  ['de-nuremberg']: .eu,
-  ['us-ashburn']: .na,
+const kProxyRegions = <String, ServerRegion>{
+  'us-ashburn': .na,
+  'us-chicago': .na,
+  'de-nuremberg': .eu,
+  'au-sydney': .oc,
 };
 
+ServerRegion? _parseRegion(String value) {
+  if (value.isEmpty) return null;
+
+  final region = ServerRegion.values.firstWhereOrNull(
+    (r) => r.name == value.toLowerCase(),
+  );
+  return region == ServerRegion.all ? null : region;
+}
+
+extension ProxyRegionExtension on ProxyInfo {
+  ServerRegion? get serverRegion => _parseRegion(region) ?? kProxyRegions[id];
+}
+
+extension ServerRegionExtension on Server {
+  ServerRegion? get serverRegion {
+    final pinnedProxyId = meta['pinned_proxy_id'];
+    return _parseRegion(region) ??
+        (pinnedProxyId == null ? null : kProxyRegions[pinnedProxyId]);
+  }
+}
+
+enum GameType {
+  all,
+  modded,
+  vanilla,
+}
+
+enum ServerGroupType {
+  crossRegion,
+  persisted,
+}
+
 class ServerGroup {
-  ServerGroup({required this.servers, required this.groupName});
+  ServerGroup({
+    required this.servers,
+    required this.groupName,
+    required this.groupType,
+    required this.groupKey,
+  });
 
   final List<Server> servers;
   final String groupName;
+  final ServerGroupType groupType;
+  final String groupKey;
 
   Server getPreferredServer() {
     final s = List.of(servers)
-      ..removeWhere((e) => e.playerCount >= e.maxPlayerCount)
-      ..sort((a, b) => b.playerCount.compareTo(a.playerCount));
-    return s.firstOrNull ?? servers.first;
+      ..sort((a, b) {
+        final aIsFull = a.playerCount >= a.maxPlayerCount;
+        final bIsFull = b.playerCount >= b.maxPlayerCount;
+
+        if (aIsFull && !bIsFull) {
+          return 1;
+        } else if (!aIsFull && bIsFull) {
+          return -1;
+        }
+
+        return b.playerCount.compareTo(a.playerCount);
+      });
+
+    return s.first;
   }
 
   List<Server> getSorted() {
     final s = List.of(servers)
       ..sort(
-        (a, b) => (a.meta['instance_id']!).compareTo(b.meta['instance_id']!),
+        (a, b) => (a.meta['instance_id'] ?? a.id).compareTo(
+          b.meta['instance_id'] ?? b.id,
+        ),
       );
     return s;
+  }
+
+  Map<String, ServerRegion> get regionProxyMappings {
+    final mappings = <String, ServerRegion>{};
+
+    for (final server in servers) {
+      final region = server.serverRegion;
+      if (region == null) continue;
+
+      final proxyId = server.meta['pinned_proxy_id'];
+      if (proxyId == null) continue;
+
+      mappings[proxyId] = region;
+    }
+
+    return mappings;
+  }
+
+  Set<ServerRegion> get regions {
+    return servers.map((e) => e.serverRegion).nonNulls.toSet();
   }
 
   ServerRegion getPreferredRegion() {
@@ -68,38 +139,33 @@ class ServerGroup {
         .map((e) => e.meta['pinned_proxy_id']!)
         .toSet();
 
-    // TODO: use server region instead
-    if (pinnedProxies.isEmpty) {
-      throw Exception('No pinned proxies found for server group $groupName');
-    }
-
-    if (pinnedProxies.length == 1) {
-      final proxyId = pinnedProxies.first;
-      final region = regionMappings.entries.firstWhereOrNull(
-        (entry) => entry.key.contains(proxyId),
-      );
-      if (region == null) {
-        throw Exception('Unknown pinned proxy id: $proxyId');
-      }
-
-      return region.value;
-    }
-
     final proxies = navigatorKey.currentContext!
         .read<KyberProxyCubit>()
         .state
         .proxies;
 
-    final proxy = proxies.firstWhere((e) => pinnedProxies.contains(e.proxy.id));
-    final region = regionMappings.entries.firstWhereOrNull(
-      (entry) => entry.key.contains(proxy.proxy.id),
-    );
-
-    if (region == null) {
-      throw Exception('Unknown pinned proxy id: ${proxy.proxy.id}');
+    // TODO: use server region instead
+    if (pinnedProxies.isEmpty) {
+      throw Exception('No pinned proxies found for server group $groupName');
     }
 
-    return region.value;
+    final KyberProxy? proxy;
+    if (pinnedProxies.length == 1) {
+      final proxyId = pinnedProxies.first;
+      proxy = proxies.firstWhereOrNull((e) => e.proxy.id == proxyId);
+      if (proxy == null) {
+        throw Exception('Unknown pinned proxy id: $proxyId');
+      }
+    } else {
+      proxy = proxies.firstWhere((e) => pinnedProxies.contains(e.proxy.id));
+    }
+
+    final region = proxy.proxy.serverRegion;
+    if (region == null) {
+      throw Exception('Unknown region for proxy ${proxy.proxy.id}');
+    }
+
+    return region;
   }
 
   List<Server> getForRegion(ServerRegion region) {
@@ -108,13 +174,12 @@ class ServerGroup {
       return s;
     }
 
-    s.removeWhere((e) => e.region.toLowerCase() != region.name);
+    s.removeWhere((e) => e.serverRegion != region);
 
     return s;
   }
 
   bool isMultiRegion() {
-    final regions = servers.map((e) => e.region).toSet();
     return regions.length > 1;
   }
 
@@ -130,7 +195,7 @@ class ServerGroup {
   }
 
   Server get serverInfo {
-    return servers.first;
+    return getPreferredServer();
   }
 }
 

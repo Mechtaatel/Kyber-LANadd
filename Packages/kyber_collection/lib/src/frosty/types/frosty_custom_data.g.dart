@@ -18,10 +18,8 @@ CustomFrostyData _$CustomFrostyDataFromJson(Map<String, dynamic> json) =>
       modeMappings: (json['modeMappings'] as Map<String, dynamic>?)?.map(
         (k, e) => MapEntry(k, e as String),
       ),
-      modeNameOverrides:
-          (json['modeNameOverrides'] as Map<String, dynamic>?)?.map(
-        (k, e) => MapEntry(k, e as String),
-      ),
+      modeNameOverrides: (json['modeNameOverrides'] as Map<String, dynamic>?)
+          ?.map((k, e) => MapEntry(k, e as String)),
     );
 
 Map<String, dynamic> _$CustomFrostyDataToJson(CustomFrostyData instance) =>
@@ -34,14 +32,14 @@ Map<String, dynamic> _$CustomFrostyDataToJson(CustomFrostyData instance) =>
     };
 
 MapElement _$MapElementFromJson(Map<String, dynamic> json) => MapElement(
-      name: json['name'] as String,
-      id: json['id'] as String,
-      image: json['image'] as String,
-      supportedModes: (json['supportedModes'] as List<dynamic>?)
-          ?.map((e) => e as String)
-          .toList(),
-      maxPlayers: (json['maxPlayers'] as num?)?.toInt(),
-    );
+  name: json['name'] as String,
+  id: json['id'] as String,
+  image: json['image'] as String,
+  supportedModes: (json['supportedModes'] as List<dynamic>?)
+      ?.map((e) => e as String)
+      .toList(),
+  maxPlayers: (json['maxPlayers'] as num?)?.toInt(),
+);
 
 Map<String, dynamic> _$MapElementToJson(MapElement instance) =>
     <String, dynamic>{

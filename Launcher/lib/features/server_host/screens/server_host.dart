@@ -3,6 +3,7 @@ import 'package:flutter/material.dart' as mt;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:kyber_launcher/core/config/colors.dart';
 import 'package:kyber_launcher/features/kyber/providers/kyber_status_cubit.dart';
+import 'package:kyber_launcher/features/server_browser/models/server_entry.dart';
 import 'package:kyber_launcher/features/server_browser/widgets/server_info_box/server_info_box.dart';
 import 'package:kyber_launcher/features/server_host/providers/host_search_cubit.dart';
 import 'package:kyber_launcher/features/server_host/widgets/create_server/map_rotation_page.dart';
@@ -189,6 +190,9 @@ class _ServerHostState extends State<ServerHost> {
                   );
                 },
               ),
+              divider:
+                  createServer ||
+                  context.watch<ModerationCubit>().state.selected,
               content: BlocBuilder<ModerationCubit, ModerationServerState>(
                 builder: (context, state) {
                   if (createServer) {
@@ -207,7 +211,7 @@ class _ServerHostState extends State<ServerHost> {
               ),
             ),
           ),
-          const SizedBox(width: 20),
+          const SizedBox(width: 15),
           Expanded(
             flex: 3,
             child: BlocBuilder<ModerationCubit, ModerationServerState>(
@@ -226,7 +230,8 @@ class _ServerHostState extends State<ServerHost> {
 
                 if (state.server != null) {
                   return ServerInfoBox(
-                    server: state.server!,
+                    server: SingleServer(server: state.server!),
+                    moderationMode: true,
                     onClose: () =>
                         context.read<ModerationCubit>().unloadServer(),
                     onServerSelected: () =>
