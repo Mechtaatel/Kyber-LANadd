@@ -7,7 +7,6 @@ import 'package:kyber_launcher/core/config/colors.dart';
 import 'package:kyber_launcher/features/kyber/models/maps.dart';
 import 'package:kyber_launcher/features/kyber/models/mode.dart';
 import 'package:kyber_launcher/features/kyber/models/modes.dart';
-import 'package:kyber_launcher/features/server_browser/models/server_entry.dart';
 import 'package:kyber_launcher/features/server_browser/widgets/server_list/entry.dart';
 import 'package:kyber_launcher/features/server_moderation/providers/moderation_cubit.dart';
 import 'package:kyber_launcher/features/server_moderation/providers/moderation_servers_cubit.dart';
@@ -41,6 +40,7 @@ class _ModerationServerListState extends State<ModerationServerList> {
               if (state is ModerationServersLoading) {
                 return const Column(
                   children: [
+                    _Header(),
                     Expanded(child: Center(child: ProgressBar())),
                   ],
                 );
@@ -49,6 +49,7 @@ class _ModerationServerListState extends State<ModerationServerList> {
               if (state is ModerationServersLoaded) {
                 return Column(
                   children: [
+                    const _Header(),
                     Expanded(
                       child: FadeIn(
                         curve: Curves.easeOut,
@@ -73,7 +74,11 @@ class _ModerationServerListState extends State<ModerationServerList> {
                             return SuperListView.builder(
                               shrinkWrap: true,
                               itemBuilder: (context, index) {
-                                final server = servers[index];
+                                if (index == 0 || index == servers.length + 1) {
+                                  return const SizedBox.shrink();
+                                }
+
+                                final server = servers[index - 1];
                                 final mode =
                                     modes
                                         .where(
@@ -93,8 +98,8 @@ class _ModerationServerListState extends State<ModerationServerList> {
                                           maps.first;
 
                                 return ServerListEntry(
-                                  server: SingleServer(server: server),
-                                  index: index,
+                                  server: server,
+                                  index: index - 1,
                                   hoveredIndex: hoverIndex ?? -1,
                                   isLast: index == servers.length,
                                   withoutQuickJoin: true,
@@ -108,7 +113,7 @@ class _ModerationServerListState extends State<ModerationServerList> {
                                   map: map,
                                 );
                               },
-                              itemCount: servers.length,
+                              itemCount: servers.length + 1,
                             );
                           },
                         ),

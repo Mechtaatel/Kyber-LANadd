@@ -13,24 +13,31 @@ class DiskHelper {
     return DiskInfo(drive, driveInfo.$1, driveInfo.$2);
   }
 
-  static (int, int) _getDiskSpaceInfo(String drive) => using((arena) {
-    final freeBytesAvailable = arena<Uint64>();
-    final totalNumberOfBytes = arena<Uint64>();
-    final totalNumberOfFreeBytes = arena<Uint64>();
+  static (int, int) _getDiskSpaceInfo(String drive) {
+    final freeBytesAvailable = calloc<Uint64>();
+    final totalNumberOfBytes = calloc<Uint64>();
+    final totalNumberOfFreeBytes = calloc<Uint64>();
 
     final result = GetDiskFreeSpaceEx(
-      arena.pcwstr(drive),
+      TEXT(drive),
       freeBytesAvailable,
       totalNumberOfBytes,
       totalNumberOfFreeBytes,
     );
 
-    if (!result.value) {
-      return (0, 0);
+    var freeSpace = 0;
+    var totalSpace = 0;
+    if (result != 0) {
+      freeSpace = freeBytesAvailable.value;
+      totalSpace = totalNumberOfBytes.value;
     }
 
-    return (totalNumberOfBytes.value, freeBytesAvailable.value);
-  });
+    free(freeBytesAvailable);
+    free(totalNumberOfBytes);
+    free(totalNumberOfFreeBytes);
+
+    return (totalSpace, freeSpace);
+  }
 }
 
 class DiskInfo {

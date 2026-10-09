@@ -16,7 +16,6 @@ import 'package:kyber_launcher/features/mods/services/level_declaration_service.
 import 'package:kyber_launcher/features/server_host/providers/host_collection_cubit.dart';
 import 'package:kyber_launcher/features/server_host/widgets/settings_box/server_settings_box.dart';
 import 'package:kyber_launcher/features/server_moderation/providers/moderation_cubit.dart';
-import 'package:kyber_launcher/features/session/providers/session_cubit.dart';
 import 'package:kyber_launcher/injection_container.dart';
 import 'package:kyber_launcher/shared/ui/ui.dart';
 import 'package:logging/logging.dart';
@@ -134,9 +133,8 @@ class SettingsBoxHeader extends StatelessWidget {
                 const SizedBox(height: 10),
                 Text(
                   'Please wait while ${missingHashes.length} map images are uploaded. This may take a few seconds.',
-                  style: FluentTheme.of(
-                    context,
-                  ).typography.body?.copyWith(color: kWhiteColor),
+                  style: FluentTheme.of(context).typography.body
+                      ?.copyWith(color: kWhiteColor),
                 ),
               ],
             ),
@@ -230,8 +228,7 @@ class SettingsBoxHeader extends StatelessWidget {
                               form.value['lanOnly'] as bool? ?? true;
                           if (!lanOnly && LanMode.enabled) {
                             NotificationService.error(
-                              message:
-                                  'Sign in to Kyber in online mode to host a public server.',
+                              message: 'Sign in to Kyber in online mode to host a public server.',
                             );
                             return;
                           }
@@ -239,8 +236,7 @@ class SettingsBoxHeader extends StatelessWidget {
                               (form.value['password'] as String? ?? '')
                                   .isNotEmpty) {
                             NotificationService.error(
-                              message:
-                                  'LAN-only servers do not support passwords yet. Clear the password to host on your trusted LAN.',
+                              message: 'LAN-only servers do not support passwords yet. Clear the password to host on your trusted LAN.',
                             );
                             return;
                           }
@@ -284,26 +280,12 @@ class SettingsBoxHeader extends StatelessWidget {
 
                           if (mapRotation.isEmpty) {
                             NotificationService.error(
-                              message:
-                                  'You need to add at least one map to the map rotation',
+                              message: 'You need to add at least one map to the map rotation',
                             );
                             return;
                           }
 
                           try {
-                            final sessionState = context
-                                .read<SessionCubit>()
-                                .state;
-                            final isInParty =
-                                !lanOnly && sessionState is InParty;
-                            if (isInParty && !sessionState.isLeader()) {
-                              NotificationService.warning(
-                                message:
-                                    'Only the party leader can join a server!',
-                              );
-                              return;
-                            }
-
                             final startRequest = StartServerRequest(
                               lanOnly: lanOnly,
                               name: form.value['serverName'] as String,
@@ -351,15 +333,13 @@ class SettingsBoxHeader extends StatelessWidget {
                               if (sl.get<MaximaGameInstance>().lanOnly !=
                                   lanOnly) {
                                 NotificationService.error(
-                                  message:
-                                      'Restart the game to switch between LAN-only and online hosting.',
+                                  message: 'Restart the game to switch between LAN-only and online hosting.',
                                 );
                                 return;
                               }
                               if (initialCommands.isNotEmpty) {
                                 NotificationService.showNotification(
-                                  message:
-                                      'Friendly Fire and Health Regeneration can only be set when no game is running',
+                                  message: 'Friendly Fire and Health Regeneration can only be set when no game is running',
                                   severity: InfoBarSeverity.error,
                                 );
                               }
@@ -404,8 +384,7 @@ class SettingsBoxHeader extends StatelessWidget {
                               stack,
                             );
                             NotificationService.error(
-                              message:
-                                  'An unexpected error occurred while starting the server',
+                              message: 'An unexpected error occurred while starting the server',
                             );
                           }
                         },

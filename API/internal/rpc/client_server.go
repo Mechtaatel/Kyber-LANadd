@@ -11,7 +11,6 @@ import (
 	"github.com/ArmchairDevelopers/Kyber/API/pkg/jwts"
 	"github.com/ArmchairDevelopers/Kyber/API/pkg/logger"
 	"github.com/ArmchairDevelopers/Kyber/API/pkg/models"
-	"github.com/ArmchairDevelopers/Kyber/API/pkg/queue"
 	"github.com/ArmchairDevelopers/Kyber/API/pkg/util"
 	"github.com/golang-jwt/jwt/v5"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -24,27 +23,17 @@ type EventBlacklistConfig struct {
 	Events []string `yaml:"events"`
 }
 
-type ChatFilterConfig struct {
-	Phrases []string `yaml:"phrases"`
-}
-
 type ClientServer struct {
 	store             *db.Store
 	jwt               *jwts.Service
-	queues            *queue.Manager
-	chatFilterConfig  *ChatFilterConfig
 	blacklistedEvents []string
 	pbapi.UnimplementedClientServerServer
 }
 
-func NewClientServer(store *db.Store, jwt *jwts.Service, queues *queue.Manager) *ClientServer {
+func NewClientServer(store *db.Store, jwt *jwts.Service) *ClientServer {
 	config := &EventBlacklistConfig{}
-	if err := util.LoadConfig("event-blacklist.yaml", config); err != nil {
-		panic(err)
-	}
-
-	chatFilterConfig := &ChatFilterConfig{}
-	if err := util.LoadConfig("chat-filter.yaml", chatFilterConfig); err != nil {
+	err := util.LoadConfig("event-blacklist.yaml", config)
+	if err != nil {
 		panic(err)
 	}
 
@@ -52,15 +41,7 @@ func NewClientServer(store *db.Store, jwt *jwts.Service, queues *queue.Manager) 
 		store:             store,
 		blacklistedEvents: config.Events,
 		jwt:               jwt,
-		queues:            queues,
-		chatFilterConfig:  chatFilterConfig,
 	}
-}
-
-func (s *ClientServer) GetChatFilter(context.Context, *pbcommon.Empty) (*pbapi.ChatFilterResponse, error) {
-	return &pbapi.ChatFilterResponse{
-		Phrases: s.chatFilterConfig.Phrases,
-	}, nil
 }
 
 func (s *ClientServer) GetBlacklist(context.Context, *pbcommon.Empty) (*pbapi.EventSyncBlacklistResponse, error) {
@@ -119,24 +100,9 @@ func (s *ClientServer) CreateJoinToken(ctx context.Context, req *pbapi.JoinToken
 	}
 
 	isModerator := server.CanManage(host, user) || user.Entitled(models.EntitlementAdmin)
-	canBypass := isModerator || user.Entitled(models.EntitlementBypassPlayerLimit)
-
-	reservedEntry, err := s.store.Queues.GetReservedForUser(ctx, server.ID, user.ID)
-	if err != nil {
-		logger.L().Error("Failed to get reserved queue entry", zap.Error(err))
-		return nil, status.Error(codes.Internal, "Failed to check queue")
-	}
-
-	if !canBypass && reservedEntry == nil {
-		shouldQueue, err := s.queues.ShouldQueue(ctx, server, 1)
-		if err != nil {
-			logger.L().Error("Failed to check queue requirement", zap.Error(err))
-			return nil, status.Error(codes.Internal, "Failed to check queue")
-		}
-
-		if shouldQueue {
-			return nil, status.Error(codes.ResourceExhausted, "Server is full")
-		}
+	isFull := server.PlayerCount >= server.MaxPlayerCount
+	if !isModerator && !user.Entitled(models.EntitlementBypassPlayerLimit) && isFull {
+		return nil, status.Error(codes.ResourceExhausted, "Server is full")
 	}
 
 	if server.Password != nil && !isModerator && *server.Password != req.Password {
@@ -170,10 +136,6 @@ func (s *ClientServer) CreateJoinToken(ctx context.Context, req *pbapi.JoinToken
 	if err != nil {
 		logger.L().Error(err.Error())
 		return nil, status.Error(codes.Internal, "Failed to create join token")
-	}
-
-	if reservedEntry != nil {
-		s.queues.MarkSlotClaimed(ctx, reservedEntry, user.ID)
 	}
 
 	logger.L().Info(fmt.Sprintf("Created join token for user (id: %s, name: %s) on server (id: %s, name: %s)", user.ID, user.Name, server.ID, server.Name))
@@ -266,20 +228,9 @@ func (s *ClientServer) ConsumeJoinToken(ctx context.Context, req *pbapi.ConsumeJ
 		return nil, status.Error(codes.Internal, "Failed to update user")
 	}
 
-	session, err := s.store.Sessions.GetByUserID(ctx, user.ID)
-	if err != nil {
-		logger.L().Error("Failed to get session", zap.Error(err))
-	}
-
-	var groupId *uint64
-	if session != nil {
-		groupId = session.PartyID
-	}
-
-	logger.L().Info(fmt.Sprintf("Consumed join token for user (id: %s) on server (id: %s) (partyId: %d)", user.ID, server.ID, groupId))
+	logger.L().Info(fmt.Sprintf("Consumed join token for user (id: %s) on server (id: %s)", user.ID, server.ID))
 	return &pbapi.ConsumeJoinTokenResponse{
-		Id:      user.ID,
-		Name:    user.Name,
-		GroupId: groupId,
+		Id:   user.ID,
+		Name: user.Name,
 	}, nil
 }

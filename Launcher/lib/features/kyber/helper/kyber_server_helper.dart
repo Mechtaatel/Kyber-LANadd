@@ -7,14 +7,12 @@ import 'package:kyber_collection/kyber_collection.dart';
 import 'package:kyber_launcher/core/routing/app_router.dart';
 import 'package:kyber_launcher/core/services/app_settings.dart';
 import 'package:kyber_launcher/core/services/notification_service.dart';
-import 'package:kyber_launcher/features/kyber/providers/kyber_api_status_cubit.dart';
 import 'package:kyber_launcher/features/kyber/providers/kyber_proxy_cubit.dart';
 import 'package:kyber_launcher/features/maxima/dialogs/maxima_start_game_dialog.dart';
 import 'package:kyber_launcher/features/maxima/models/maxima_game_instance.dart';
-import 'package:kyber_launcher/features/mod_collections/extensions/mod_collection_extension.dart';
+import 'package:kyber_launcher/features/mod_collections/providers/mod_collection_cubit.dart';
 import 'package:kyber_launcher/features/mods/extensions/frosty_collection_extension.dart';
 import 'package:kyber_launcher/features/mods/services/mod_service.dart';
-import 'package:kyber_launcher/features/session/providers/session_cubit.dart';
 import 'package:kyber_launcher/injection_container.dart';
 import 'package:kyber_launcher/shared/ui/dialog/kyber_dialog.dart';
 import 'package:logging/logging.dart';
@@ -27,7 +25,6 @@ class KyberServerHelper {
     ModCollectionMetaData? selectedCollection,
     bool? spectator,
     String? password,
-    bool queueIfFull = false,
   }) async {
     // Selections/invite links may predate the last scan. Resolve LAN again
     // immediately before joining, including when an online row was selected.
@@ -138,30 +135,11 @@ class KyberServerHelper {
 
     try {
       final service = sl.get<KyberGRPCService>();
-      JoinTokenResponse? joinToken;
-      if (!server.isLanOnly)
-        try {
-          joinToken = await service.clientServerClient.createJoinToken(
-            .new(
-              server: server.id,
-              password: password,
-            ),
-          );
-        } on GrpcError catch (e) {
-          if (!server.isLan &&
-              queueIfFull &&
-              e.code == StatusCode.resourceExhausted &&
-              LightswitchCubit.isFeatureEnabled(.queues)) {
-            await _joinQueueForServer(
-              server,
-              selectedCollection: selectedCollection,
-              spectator: spectator,
-              password: password,
+      final joinToken = server.isLanOnly
+          ? null
+          : await service.clientServerClient.createJoinToken(
+              .new(server: server.id, password: password),
             );
-            return;
-          }
-          rethrow;
-        }
 
       final joinRequest = JoinServerRequest(
         id: server.isLanOnly ? null : server.id,
@@ -193,50 +171,6 @@ class KyberServerHelper {
     } catch (e) {
       _logger.severe('Failed to join server: $e', e);
       NotificationService.error(message: 'Failed to join server: $e');
-    }
-  }
-
-  static Future<void> _joinQueueForServer(
-    Server server, {
-    ModCollectionMetaData? selectedCollection,
-    bool? spectator,
-    String? password,
-  }) async {
-    final sessionCubit = navigatorKey.currentContext?.read<SessionCubit>();
-    if (sessionCubit == null) {
-      return;
-    }
-
-    try {
-      await sessionCubit.joinQueue(
-        server,
-        password: password ?? '',
-        spectator: spectator ?? false,
-        selectedCollection: selectedCollection,
-      );
-
-      NotificationService.info(
-        message: 'Server is full. You joined the queue.',
-      );
-    } on GrpcError catch (e) {
-      if (e.code == StatusCode.failedPrecondition &&
-          (e.message?.contains('not full') ?? false)) {
-        NotificationService.info(
-          message: 'Joining server...',
-        );
-        await joinServer(
-          server,
-          selectedCollection: selectedCollection,
-          spectator: spectator,
-          password: password,
-        );
-        return;
-      }
-
-      _logger.severe('Failed to join server queue: ${e.message}', e);
-      NotificationService.error(
-        message: 'Failed to join server queue: ${e.message}',
-      );
     }
   }
 }

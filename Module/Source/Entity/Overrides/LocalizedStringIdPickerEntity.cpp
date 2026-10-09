@@ -4,7 +4,6 @@
 
 #include <Entity/KyberSettings.h>
 #include <Core/Program.h>
-#include <SDK/Fb/UIIncubatorShared.h>
 
 namespace Kyber
 {
@@ -13,10 +12,7 @@ KB_IMPLEMENT_ENTITY_OVERRIDE(LocalizedStringIdPickerEntity, LocalizedStringIdPic
 LocalizedStringIdPickerEntity::LocalizedStringIdPickerEntity(EntityManager* entityManager, NativeEntity* entity, LocalizedStringIdPickerEntityData* data)
     : KyberEntity(entity, data)
 {
-    LocalizedStringId* defaultValue = g_program->m_entityManager->CreateContainer<LocalizedStringId>(typeInfo_LocalizedStringId);
-    defaultValue->StringHash = CalcStringHash("ID_DBG_LOREM_IPSUM");
-    m_localizedStringId = CreateFieldOverride<LocalizedStringId>("StringId", typeInfo_LocalizedStringId, defaultValue);
-
+    m_localizedStringId = CreateFieldOverride<LocalizedStringId>("StringId", g_program->m_entityManager->GetNativeType("LocalizedStringId"));
     GetLocalized();
 }
 
@@ -48,7 +44,7 @@ void LocalizedStringIdPickerEntity::GetLocalized()
     std::string id = sid != nullptr ? sid : "";
     int32_t stringHash = CalcStringHash(id);
 
-    LocalizedStringId* container = g_program->m_entityManager->CreateContainer<LocalizedStringId>(typeInfo_LocalizedStringId);
+    LocalizedStringId* container = g_program->m_entityManager->CreateContainer<LocalizedStringId>("LocalizedStringId");
     if (container == nullptr)
     {
         return;
@@ -56,5 +52,16 @@ void LocalizedStringIdPickerEntity::GetLocalized()
     container->StringHash = stringHash;
 
     m_localizedStringId = container;
+}
+
+// Strings in Frostbite are referenced by a hash of a unique ID for each string, This calculates that hash for a given ID and returns it
+int32_t LocalizedStringIdPickerEntity::CalcStringHash(const std::string& string)
+{
+    int32_t result = 0xFFFFFFFF; 
+    for (int i = 0; i < string.length(); i++)
+    {
+        result = string[i] + 33 * result;
+    }
+    return result;
 }
 } // namespace Kyber

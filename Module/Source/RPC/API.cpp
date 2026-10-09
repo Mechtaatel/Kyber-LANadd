@@ -6,8 +6,6 @@
 
 #include <errhandlingapi.h>
 #include <grpc++/alarm.h>
-#include <grpcpp/create_channel.h>
-#include <grpcpp/security/credentials.h>
 
 #include <grpc/grpc.h>
 #include <memory>

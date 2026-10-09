@@ -44,16 +44,16 @@ class ServerBackgroundImage extends StatelessWidget {
                   fit: BoxFit.cover,
                   placeholder: (context, url) =>
                       Assets.images.kyberNoImage.image(
-                        height: 400,
+                        height: 200,
                         fit: BoxFit.cover,
                       ),
                 )
               : image?.image(
-                      height: 400,
+                      height: 200,
                       fit: BoxFit.cover,
                     ) ??
                     Assets.images.kyberNoImage.image(
-                      height: 400,
+                      height: 200,
                       fit: BoxFit.cover,
                     ),
         ),
@@ -62,12 +62,12 @@ class ServerBackgroundImage extends StatelessWidget {
 
     return ShaderMask(
       shaderCallback: (rect) {
-        return const LinearGradient(
-          begin: .topCenter,
-          end: .bottomCenter,
+        return LinearGradient(
+          begin: .bottomCenter,
+          end: .topCenter,
           colors: [
-            Colors.black,
             Colors.transparent,
+            Colors.black.withOpacity(.4),
           ],
         ).createShader(Rect.fromLTRB(0, 0, rect.width, rect.height));
       },
@@ -79,7 +79,7 @@ class ServerBackgroundImage extends StatelessWidget {
           ) ??
           Assets.images.kyberNoImage.image(
             height: 200,
-            fit: .fitWidth,
+            fit: .cover,
           ),
     );
   }

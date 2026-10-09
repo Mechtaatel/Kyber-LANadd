@@ -7,7 +7,6 @@ import 'package:kyber_launcher/core/routing/app_router.dart';
 import 'package:kyber_launcher/core/services/app_settings.dart';
 import 'package:kyber_launcher/core/services/notification_service.dart';
 import 'package:kyber_launcher/features/server_browser/constants/modes.dart';
-import 'package:kyber_launcher/features/server_browser/models/server_entry.dart';
 import 'package:kyber_launcher/features/server_browser/models/server_filter.dart';
 import 'package:kyber_launcher/features/server_browser/models/server_list_state.dart';
 import 'package:kyber_launcher/features/server_moderation/providers/moderation_servers_cubit.dart';
@@ -106,19 +105,6 @@ class ServerListCubit extends Cubit<ServerListState> {
       ServerListLoading(page: _page, pages: state.pages, filter: this.filter),
     );
     loadServers();
-  }
-
-  void goToPage(int page) {
-    if (state is ServerListLoaded) {
-      final x = state as ServerListLoaded;
-      if (page < 1 || page > x.pages) {
-        return;
-      }
-
-      _page = page;
-      emit(ServerListLoading(page: _page, pages: x.pages, filter: filter));
-      loadServers();
-    }
   }
 
   void nextPage() {
@@ -248,7 +234,7 @@ class ServerListCubit extends Cubit<ServerListState> {
 
     if (filter.region != .all) {
       s.removeWhere((element) {
-        return element.serverRegion != filter.region;
+        return element.region.toLowerCase() != filter.region.name;
       });
     }
 
@@ -265,73 +251,49 @@ class ServerListCubit extends Cubit<ServerListState> {
     }
 
     final serverGroups = <String, ServerGroup>{};
-    final groupIdServers = Preferences.general.groupServersByRegion
-        ? (List.of(s)
-              .where((e) => !e.isLan && e.meta.containsKey('group_id'))
-              .groupListsBy((e) => e.meta['group_id']! + e.creatorId)
-            ..removeWhere((k, v) => v.length < 2))
-        : <String, List<Server>>{};
-
-    for (final entry in groupIdServers.entries) {
-      serverGroups[entry.key] = ServerGroup(
-        servers: entry.value,
-        groupName: entry.value.first.name,
-        groupType: ServerGroupType.crossRegion,
-        groupKey: entry.key,
-      );
-    }
-
-    final alreadyGroupedIds = groupIdServers.values
-        .expand((v) => v)
-        .map((e) => e.id)
-        .toSet();
-    final persistedGroups =
+    final groupedServers =
         List.of(s)
             .where(
               (e) =>
-                  !e.isLan &&
-                  !alreadyGroupedIds.contains(e.id) &&
                   e.meta.containsKey('instance_id') &&
                   e.meta.containsKey('persisted_id'),
             )
-            .groupListsBy((e) => e.meta['persisted_id']! + e.creatorId)
+            .groupListsBy((element) => element.meta['persisted_id']!)
           ..removeWhere((k, v) => v.length < 2);
 
-    for (final entry in persistedGroups.entries) {
+    for (final entry in groupedServers.entries) {
       serverGroups[entry.key] = ServerGroup(
         servers: entry.value,
-        groupName: entry.value.first.name,
-        groupType: ServerGroupType.persisted,
-        groupKey: entry.key,
+        groupName: entry.value.last.name,
       );
     }
 
-    final groupedServerIds = serverGroups.values
-        .expand((g) => g.servers.map((s) => s.id))
-        .toSet();
-
     final newServers =
-        <ServerEntry>[
-          ...serverGroups.values.map((g) => GroupedServer(group: g)),
-          ...s
-              .where((e) => !groupedServerIds.contains(e.id))
-              .map((e) => SingleServer(server: e)),
+        <Object>[
+          ...serverGroups.values,
+          ...s.where(
+            (e) => !serverGroups.keys.contains(e.meta['persisted_id'] ?? ''),
+          ),
         ]..sort((a, b) {
-          final playerCountA = a.totalPlayerCount;
-          final playerCountB = b.totalPlayerCount;
-          final serverA = a.serverInfo;
-          final serverB = b.serverInfo;
+          final playerCountA = a is ServerGroup
+              ? a.totalPlayerCount
+              : (a as Server).playerCount;
+          final playerCountB = b is ServerGroup
+              ? b.totalPlayerCount
+              : (b as Server).playerCount;
+          a = a is ServerGroup ? a.serverInfo : a as Server;
+          b = b is ServerGroup ? b.serverInfo : b as Server;
 
           final aIsFriend = _friends.any(
-            (e) => e.displayName == serverA.creator,
+            (e) => e.displayName == (a as Server).creator,
           );
           final bIsFriend = _friends.any(
-            (e) => e.displayName == serverB.creator,
+            (e) => e.displayName == (b as Server).creator,
           );
 
-          final priority = serverA
+          final priority = a
               .browserPriority(friend: aIsFriend)
-              .compareTo(serverB.browserPriority(friend: bIsFriend));
+              .compareTo(b.browserPriority(friend: bIsFriend));
           if (priority != 0) return priority;
 
           if (aIsFriend && !bIsFriend) {
@@ -340,9 +302,9 @@ class ServerListCubit extends Cubit<ServerListState> {
             return 1;
           }
 
-          if (serverA.requiresPassword && !serverB.requiresPassword) {
+          if (a.requiresPassword && !b.requiresPassword) {
             return 1;
-          } else if (!serverA.requiresPassword && serverB.requiresPassword) {
+          } else if (!a.requiresPassword && b.requiresPassword) {
             return -1;
           }
 
@@ -355,7 +317,9 @@ class ServerListCubit extends Cubit<ServerListState> {
 
     if (filter.query != null && filter.query!.isNotEmpty) {
       newServers.removeWhere((element) {
-        final info = element.serverInfo;
+        final info = element is ServerGroup
+            ? element.serverInfo
+            : element as Server;
         return !info.name.toLowerCase().contains(filter.query!.toLowerCase()) &&
             !info.creator.toLowerCase().contains(filter.query!.toLowerCase());
       });
@@ -367,7 +331,7 @@ class ServerListCubit extends Cubit<ServerListState> {
     }
 
     final paginatedServers = pages == 0
-        ? const <ServerEntry>[]
+        ? const <Server>[]
         : newServers.skip((_page - 1) * _pageLimit).take(_pageLimit).toList();
 
     emit(

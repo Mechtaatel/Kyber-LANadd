@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:csv/csv.dart';
 import 'package:dio/dio.dart';
 import 'package:html/dom.dart';
@@ -62,9 +64,11 @@ class NexusBridge {
     final resp = await _dio.get<String>(
       'https://staticstats.nexusmods.com/live_download_counts/mods/2229.csv',
     );
-
-    final stats = Csv(lineDelimiter: '\n', dynamicTyping: true)
-        .decode(resp.data!.substring(0, resp.data!.lastIndexOf('\n')));
+    final stats = const CsvToListConverter(
+      eol: '\n',
+      shouldParseNumbers: true,
+      allowInvalid: true,
+    ).convert(resp.data!.substring(0, resp.data!.lastIndexOf('\n')));
 
     for (final stat in stats) {
       _modStatistics[stat.first as int] = List<int>.from(stat.sublist(1));

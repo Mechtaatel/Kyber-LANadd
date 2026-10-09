@@ -28,7 +28,7 @@ type DiscordAuthState struct {
 	stateMu       sync.RWMutex
 }
 
-func NewDiscordAuthState(store *db.Store, caches *cache.Caches) *DiscordAuthState {
+func NewDiscordAuthState(store *db.Store, discordCache *cache.DiscordAuthCache) *DiscordAuthState {
 	discordClientID := os.Getenv("DISCORD_CLIENT_ID")
 	discordClientSecret := os.Getenv("DISCORD_CLIENT_SECRET")
 	discordRedirectURL := os.Getenv("DISCORD_REDIRECT_URL")
@@ -53,7 +53,7 @@ func NewDiscordAuthState(store *db.Store, caches *cache.Caches) *DiscordAuthStat
 	return &DiscordAuthState{
 		store:        store,
 		discordOAuth: discordOAuth,
-		stateStore:   caches.DiscordAuth,
+		stateStore:   discordCache,
 	}
 }
 

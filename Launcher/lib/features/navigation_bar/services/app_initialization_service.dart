@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:kyber/kyber.dart';
-import 'package:grpc/grpc.dart';
 import 'package:kyber_launcher/core/services/app_settings.dart';
 import 'package:kyber_launcher/core/services/module_version_service.dart';
 import 'package:kyber_launcher/core/services/notification_service.dart';
@@ -24,7 +23,6 @@ import 'package:kyber_launcher/features/navigation_bar/dialogs/disable_comp_mode
 import 'package:kyber_launcher/features/navigation_bar/helper/protocol_helper.dart';
 import 'package:kyber_launcher/features/nexusmods/widgets/graphql_provider.dart';
 import 'package:kyber_launcher/features/server_moderation/providers/moderation_servers_cubit.dart';
-import 'package:kyber_launcher/features/session/providers/session_cubit.dart';
 import 'package:kyber_launcher/features/settings/dialogs/update_dialog.dart';
 import 'package:kyber_launcher/features/setup/dialogs/open_beta_dialog.dart';
 import 'package:kyber_launcher/features/setup/dialogs/rules_dialog.dart';
@@ -33,7 +31,6 @@ import 'package:kyber_launcher/injection_container.dart';
 import 'package:kyber_launcher/main.dart';
 import 'package:kyber_launcher/shared/ui/dialog/kyber_dialog.dart';
 import 'package:logging/logging.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
 
 class AppInitializationService {
   static final _logger = Logger('app_initialization_service');
@@ -47,30 +44,6 @@ class AppInitializationService {
       ..read<KyberProxyCubit>();
 
     sl.get<RichPresence>().start();
-  }
-
-  static void _connectToSessionService(BuildContext context) async {
-    if (!context.mounted || LanMode.enabled) return;
-
-    try {
-      await context.read<SessionCubit>().connect();
-    } on GrpcError catch (e) {
-      _logger.severe('Failed to connect to session service: ${e.message}');
-      NotificationService.error(
-        message: 'Failed to connect to session service: ${e.message}',
-      );
-    } on WebSocketChannelException catch (e) {
-      _logger.severe('Failed to connect to session service: ${e.message}');
-      NotificationService.error(
-        message:
-            'Failed to connect to session service. Some features may not work properly.',
-      );
-    } catch (e) {
-      _logger.severe('Failed to connect to session service: $e');
-      NotificationService.error(
-        message: 'Failed to connect to session service: $e',
-      );
-    }
   }
 
   static Future<void> startServices(BuildContext context) async {
@@ -99,8 +72,6 @@ class AppInitializationService {
     }
 
     await ProtocolHelper.initialize();
-
-    _connectToSessionService(context);
 
     await _checkCompatibilityMode(context);
     if (Preferences.general.checkLanAddUpdates) await _checkForUpdates(context);
@@ -149,8 +120,7 @@ class AppInitializationService {
     if (!isVcRuntimeInstalled) {
       NotificationService.error(
         title: 'Visual C++ Runtime not installed',
-        message:
-            'Please install the Visual C++ Redistributable for Visual Studio 2015, 2017 and 2019',
+        message: 'Please install the Visual C++ Redistributable for Visual Studio 2015, 2017 and 2019',
       );
     }
   }

@@ -811,23 +811,6 @@ DataContainer* EntityManager::InternalCreateContainer(const std::string& name) c
     return container;
 }
 
-DataContainer* EntityManager::InternalCreateContainer(const TypeInfo* typeInfo) const
-{
-    if (typeInfo == nullptr)
-    {
-        KYBER_LOG(Error, "[Entity] Cannot allocate container without type info");
-        return nullptr;
-    }
-    DataContainer* container = DataContainerClassInfo_createInstance(typeInfo, FB_GLOBAL_ARENA, true, true);
-    if (container == nullptr)
-    {
-        KYBER_LOG(Error, "[Entity] Failed to allocate container");
-        return nullptr;
-    }
-    container->m_dcType = const_cast<TypeInfo*>(typeInfo);
-    return container;
-}
-
 EntityManager::EntityManager()
 {
     KYBER_LOG(Info, "[Entity] Initializing Entity Manager");

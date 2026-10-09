@@ -19,7 +19,6 @@ import 'package:kyber_launcher/features/download_manager/services/download_post_
 import 'package:kyber_launcher/features/download_manager/services/incremental_updater.dart';
 import 'package:kyber_launcher/features/download_manager/services/platform/download_platform_integration.dart';
 import 'package:kyber_launcher/features/download_manager/services/platform/windows_taskbar_integration.dart';
-import 'package:kyber_launcher/features/kyber/providers/kyber_api_status_cubit.dart';
 import 'package:kyber_launcher/features/mods/helper/mod_helper.dart';
 import 'package:kyber_launcher/features/mods/services/mod_service.dart';
 import 'package:kyber_launcher/features/nexusmods/dialogs/nexusmods_login.dart';
@@ -199,8 +198,7 @@ class DownloadOrchestrator with ChangeNotifier {
 
       final isZipFile = extension(resolved.filename) == '.zip';
       final useIncrementalUpdate =
-          Preferences.general.incrementalDownloadsEnabled &&
-          LightswitchCubit.isFeatureEnabled(.incrementalUpdates);
+          Preferences.general.incrementalDownloadsEnabled;
 
       if (useIncrementalUpdate && isZipFile) {
         final updater = IncrementalUpdater();

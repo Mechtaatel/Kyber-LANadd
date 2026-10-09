@@ -78,40 +78,41 @@ class KyberListItem extends StatelessWidget {
         cursor: SystemMouseCursors.click,
         onEnter: (_) => onHover(true),
         onExit: (_) => onHover(false),
-        child: Container(
-          alignment: .centerLeft,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          alignment: Alignment.centerLeft,
           decoration: BoxDecoration(
             border: Border(
-              top: (index == 0 || scrollDirection == .horizontal)
+              top: (index == 0 || scrollDirection == Axis.horizontal)
                   ? borderSide
-                  : .none,
-              left: (index == 0 || scrollDirection == .vertical)
+                  : BorderSide.none,
+              left: (index == 0 || scrollDirection == Axis.vertical)
                   ? borderSide
-                  : .none,
-              right: (isLast || scrollDirection == .vertical)
+                  : BorderSide.none,
+              right: (isLast || scrollDirection == Axis.vertical)
                   ? borderSide
-                  : .none,
+                  : BorderSide.none,
               bottom: (isLast || scrollDirection == Axis.horizontal)
                   ? borderSide
-                  : .none,
+                  : BorderSide.none,
             ),
-            borderRadius: .only(
-              topRight: .circular(
+            borderRadius: BorderRadius.only(
+              topRight: Radius.circular(
                 roundedStart && index == 0
                     ? (borderRadius ?? kDefaultOuterBorderRadius)
                     : 0,
               ),
-              topLeft: .circular(
+              topLeft: Radius.circular(
                 roundedStart && index == 0
                     ? (borderRadius ?? kDefaultOuterBorderRadius)
                     : 0,
               ),
-              bottomRight: .circular(
+              bottomRight: Radius.circular(
                 roundedEnd && isLast
                     ? (borderRadius ?? kDefaultOuterBorderRadius)
                     : 0,
               ),
-              bottomLeft: .circular(
+              bottomLeft: Radius.circular(
                 roundedEnd && isLast
                     ? (borderRadius ?? kDefaultOuterBorderRadius)
                     : 0,

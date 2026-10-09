@@ -64,13 +64,13 @@ class _KyberListState extends State<KyberList> {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: .vertical(
+      borderRadius: BorderRadius.vertical(
         bottom: widget.roundedEnd
-            ? .circular(widget.borderRadius ?? kDefaultOuterBorderRadius)
-            : .zero,
+            ? Radius.circular(widget.borderRadius ?? kDefaultOuterBorderRadius)
+            : Radius.zero,
         top: widget.roundedStart
-            ? .circular(widget.borderRadius ?? kDefaultOuterBorderRadius)
-            : .zero,
+            ? Radius.circular(widget.borderRadius ?? kDefaultOuterBorderRadius)
+            : Radius.zero,
       ),
       child: BackgroundBlur(
         blurIntensity: widget.blur ? 6 : 0,
@@ -79,7 +79,7 @@ class _KyberListState extends State<KyberList> {
           child: SuperListView.separated(
             physics: widget.physics,
             scrollDirection: widget.scrollDirection,
-            padding: .zero,
+            padding: EdgeInsets.zero,
             itemBuilder: (context, index) {
               return KyberListItem(
                 padding: widget.itemPadding,
@@ -99,15 +99,17 @@ class _KyberListState extends State<KyberList> {
                 roundedEnd: widget.roundedEnd,
                 roundedStart: widget.roundedStart,
                 borderRadius: widget.borderRadius,
-                onHover: (hover) =>
-                    setState(() => hoveredIndex = hover ? index : null),
+                onHover: (hover) {
+                  setState(() => hoveredIndex = hover ? index : null);
+                },
                 child: widget.itemBuilder(context, index) ?? const SizedBox(),
               );
             },
             shrinkWrap: widget.shrinkWrap,
             itemCount: widget.itemCount,
             separatorBuilder: (context, index) {
-              return Container(
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
                 width: widget.scrollDirection == Axis.horizontal ? 2 : 0,
                 height: widget.scrollDirection == Axis.horizontal ? 0 : 2,
                 color: hoveredIndex == index || hoveredIndex == index + 1

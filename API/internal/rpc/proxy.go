@@ -14,11 +14,10 @@ type ProxyServer struct {
 }
 
 type yamlProxyInfo struct {
-	ID     string `yaml:"id"`
-	IP     string `yaml:"ip"`
-	Name   string `yaml:"name"`
-	Flag   string `yaml:"flag"`
-	Region string `yaml:"region"`
+	ID   string `yaml:"id"`
+	IP   string `yaml:"ip"`
+	Name string `yaml:"name"`
+	Flag string `yaml:"flag"`
 }
 
 type yamlProxyList struct {
@@ -38,11 +37,10 @@ func NewProxyServer() *ProxyServer {
 	}
 	for i, p := range ypl.Proxies {
 		pbList.Proxies[i] = &pbapi.ProxyInfo{
-			Id:     p.ID,
-			Ip:     p.IP,
-			Name:   p.Name,
-			Flag:   p.Flag,
-			Region: p.Region,
+			Id:   p.ID,
+			Ip:   p.IP,
+			Name: p.Name,
+			Flag: p.Flag,
 		}
 	}
 

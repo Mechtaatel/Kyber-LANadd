@@ -5,7 +5,6 @@
 #include <Utilities/PlatformUtils.h>
 #include <Script/Lua.h>
 #include <SDK/Funcs.h>
-#include <SDK/Fb/DiceShooterShared.h>
 #include <Script/LuaDataContainer.h>
 #include <Script/LuaPlayerManager.h>
 
@@ -455,42 +454,42 @@ static int QueryEntityResultGetPlayer(lua_State* L)
         return 0;
     }
 
-    WeakPtr<ServerPlayer>* result = reinterpret_cast<WeakPtr<ServerPlayer>*>(val->value);
-    //if (result == nullptr || result->ResultPtr == nullptr || *result->ResultPtr == nullptr || result->ResultPtr[-1] == nullptr)
+    CRASH();
+
+    QueryEntityResult* result = reinterpret_cast<QueryEntityResult*>(val->value);
+    if (result == nullptr || result->ResultPtr == nullptr || *result->ResultPtr == nullptr || result->ResultPtr[-1] == nullptr)
     {
         KYBER_LOG(Warning, "Empty QueryEntityResult");
         return 0;
     }
 
-    //ServerPlayer* player = reinterpret_cast<ServerPlayer*>(result->ResultPtr[-1]);
+    ServerPlayer* player = reinterpret_cast<ServerPlayer*>(result->ResultPtr[-1]);
     return 0;
 }
 
 static const luaL_Reg s_entityMeta[] = { { "__index", EntityIndex }, { NULL, NULL } };
 static const luaL_Reg s_entityBusMeta[] = { { "__index", EntityBusIndex }, { NULL, NULL } };
 
-static const luaL_Reg s_entityManagerFuncs[] = { { "Create", CreateEntityFunc }, { "GetList", GetListFunc }, { NULL, NULL } };
-static const luaL_Reg s_qerFuncs[] = { { "GetPlayer", QueryEntityResultGetPlayer }, { NULL, NULL } };
-
-void LuaEntityManager::Register(lua_State* L)
+void LuaEntityManager::Register(lua_State* lua)
 {
-    s_lua = L;
+    s_lua = lua;
 
-    KB_LUA_NEW_GLOBAL_LIB(L, "EntityManager", s_entityManagerFuncs);
-    KB_LUA_NEW_GLOBAL_LIB(L, "QueryResultUtils", s_qerFuncs);
+    luaL_Reg funcs[] = { { "Create", CreateEntityFunc }, { "GetList", GetListFunc }, { NULL, NULL } };
+    LuaUtils::RegisterFunctionTable(lua, "EntityManager", funcs);
 
-    lua_pushcfunction(L, ServerPlayerEventFunc);
-    lua_setglobal(L, "ServerPlayerEvent");
+    luaL_Reg qerFuncs[] = { { "GetPlayer", QueryEntityResultGetPlayer }, { NULL, NULL } };
+    LuaUtils::RegisterFunctionTable(lua, "QueryResultUtils", qerFuncs);
 
-    lua_pushcfunction(L, EntityEventFunc);
-    lua_setglobal(L, "EntityEvent");
+    lua_pushcfunction(lua, ServerPlayerEventFunc);
+    lua_setglobal(lua, "ServerPlayerEvent");
 
-    luaL_newmetatable(L, "Entity");
-    luaL_setfuncs(L, s_entityMeta, 0);
+    lua_pushcfunction(lua, EntityEventFunc);
+    lua_setglobal(lua, "EntityEvent");
 
-    luaL_newmetatable(L, "EntityBus");
-    luaL_setfuncs(L, s_entityBusMeta, 0);
+    luaL_newmetatable(s_lua, "Entity");
+    luaL_setfuncs(s_lua, s_entityMeta, 0);
+
+    luaL_newmetatable(s_lua, "EntityBus");
+    luaL_setfuncs(s_lua, s_entityBusMeta, 0);
 }
-
-KB_REGISTER_LUA_CONTENT_MANAGER(LuaEntityManager);
 } // namespace Kyber

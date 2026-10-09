@@ -1,8 +1,8 @@
 // Copyright Armchair Developers / Sean Kahler. Licensed under GPLv3.
 
 #include <Core/EventManager.h>
+
 #include <Hook/HookManager.h>
-#include <SDK/Funcs.h>
 
 namespace Kyber
 {
@@ -20,18 +20,9 @@ void EventManager::ProcessEventQueue()
 
     while (!m_eventQueue.empty())
     {
-        Event* e = const_cast<Event*>(m_eventQueue.front());
+        const Event* e = m_eventQueue.front();
         DispatchEvent(*e);
-
-        if (MemoryArena* arena = ArenaMap::FindArenaForObject(e))
-        {
-            arena->del(e);
-        }
-        else
-        {
-            MemoryLeakDb::AddEntry(sizeof(*e), "Failed to deconstruct event");
-        }
-
+        delete e;
         m_eventQueue.pop();
     }
 }

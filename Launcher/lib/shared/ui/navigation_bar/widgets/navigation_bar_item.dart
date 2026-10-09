@@ -2,6 +2,7 @@ import 'package:fluent_ui/fluent_ui.dart';
 import 'package:kyber_launcher/core/config/colors.dart';
 import 'package:kyber_launcher/gen/fonts.gen.dart';
 import 'package:kyber_launcher/shared/ui/navigation_bar/navigation_bar_list.dart';
+import 'package:kyber_launcher/shared/ui/utils/background_blur.dart';
 
 class NavigationBarItem extends StatelessWidget {
   const NavigationBarItem({
@@ -25,26 +26,27 @@ class NavigationBarItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: 160,
-      height: 50,
+      height: 48,
       child: GestureDetector(
         onTap: onTap,
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
           onHover: (_) => onHover(true),
           onExit: (_) => onHover(false),
-          child: Container(
-            color: active ? const Color.fromRGBO(67, 73, 76, 0.3) : null,
+          child: BackgroundBlur(
+            blurColor: active ? kWhiteBackgroundColor : null,
+            blurIntensity: 10,
             child: Center(
               child: Row(
-                mainAxisAlignment: .center,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  ?child,
+                  if (child != null) child!,
                   Text(
                     item.title.toUpperCase(),
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontFamily: FontFamily.battlefrontUI,
-                      fontSize: 21,
+                      fontSize: 20,
                       color: hover
                           ? kActiveColor
                           : active
@@ -60,6 +62,7 @@ class NavigationBarItem extends StatelessWidget {
                           : null,
                     ),
                   ),
+                  if (child != null) const SizedBox(width: 15),
                 ],
               ),
             ),

@@ -33,7 +33,7 @@ type StatisticsServer struct {
 	pbapi.UnimplementedStatisticsServer
 }
 
-func NewStatisticsServer(ctx context.Context, store *db.Store, caches *cache.Caches) *StatisticsServer {
+func NewStatisticsServer(ctx context.Context, store *db.Store, statsCache *cache.StatsCache) *StatisticsServer {
 	var statsClient *pbea.StatisticsClient
 	var usersClient *pbea.UsersClient
 
@@ -72,7 +72,7 @@ func NewStatisticsServer(ctx context.Context, store *db.Store, caches *cache.Cac
 		store:               store,
 		statsClient:         statsClient,
 		usersClient:         usersClient,
-		statsCache:          caches.Stats,
+		statsCache:          statsCache,
 		elasticsearchClient: es,
 	}
 }

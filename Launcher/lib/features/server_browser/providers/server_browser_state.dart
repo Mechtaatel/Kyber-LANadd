@@ -6,11 +6,11 @@ class ServerBrowserState {
     this.joiningServer,
   });
 
-  final ServerEntry? selectedServer;
+  final Object? selectedServer;
   final Server? joiningServer;
 
   ServerBrowserState copyWith({
-    ServerEntry? selectedServer,
+    Object? selectedServer,
     Server? joiningServer,
   }) {
     return ServerBrowserState(

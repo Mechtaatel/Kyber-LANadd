@@ -7,39 +7,39 @@
 #include <Utilities/PlatformUtils.h>
 #include <SDK/Funcs.h>
 #include <Entity/KyberSettings.h>
-#include <SDK/TypeInfo.h>
 
 namespace Kyber
 {
+
+// NOTE: This display is not regarded as being accurate, as it gives absurdly large
+// numbers (around 200ms for locally hosted servers, when that should be 0)
+// It is not to be put in prod until that is fixed.
+
 class LatencyDisplay : public GenericUpdateListener
 {
 public:
     void Update(UpdateType type, const UpdateParameters& params) override
     {
-        KyberSettings* kyberSettings = Settings<KyberSettings>("Kyber");
-        PerfOverlaySettings* perfOverlaySettings = Settings<PerfOverlaySettings>("PerfOverlay");
-        if (kyberSettings == nullptr || perfOverlaySettings == nullptr)
+        return;
+
+        KyberSettings* settings = Settings<KyberSettings>("Kyber");
+        if (settings == nullptr)
         {
             return;
         }
 
-        if (!kyberSettings->RenderLatencyDisplay && !perfOverlaySettings->DrawFps)
+        if (ClientGameContext::Get()->onlineManager == nullptr)
         {
             return;
         }
 
-        if (ClientGameContext::Get()->m_onlineManager == nullptr)
-        {
-            return;
-        }
-
-        ClientConnection* connection = ClientGameContext::Get()->GetOnlineManager()->GetClientConnection();
+        void* connection = OnlineManager_clientConnection(ClientGameContext::Get()->onlineManager);
         if (connection == nullptr)
         {
             return;
         }
 
-        float latency = connection->GetAverageLatency() * 1000;
+        float latency = ClientConnection_getAverageLatency(connection) * 1000;
 
         char buf[100];
         snprintf(buf, 100, "Latency: %.3fms", latency);

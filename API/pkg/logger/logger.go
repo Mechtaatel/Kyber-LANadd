@@ -12,9 +12,8 @@ import (
 )
 
 var (
-	once    sync.Once
-	zl      *zap.Logger
-	console *zap.Logger
+	once sync.Once
+	zl   *zap.Logger
 )
 
 func Init(s *sentry.Client) error {
@@ -38,7 +37,6 @@ func Init(s *sentry.Client) error {
 			level = zapcore.InfoLevel
 		}
 		consoleCore := zapcore.NewCore(consoleEnc, ws, level)
-		console = zap.New(consoleCore, zap.AddCaller())
 
 		if s != nil {
 			cfg := zapsentry.Configuration{
@@ -54,7 +52,7 @@ func Init(s *sentry.Client) error {
 				panic("zapsentry.NewCore: " + e2.Error())
 			}
 
-			core := zapcore.NewTee(consoleCore, scopedCore{sentryCore})
+			core := zapcore.NewTee(consoleCore, sentryCore)
 
 			zl = zap.New(core, zap.AddCaller())
 		} else {
@@ -66,10 +64,6 @@ func Init(s *sentry.Client) error {
 
 func L() *zap.Logger {
 	return zl
-}
-
-func Console() *zap.Logger {
-	return console
 }
 
 func Sync() error {

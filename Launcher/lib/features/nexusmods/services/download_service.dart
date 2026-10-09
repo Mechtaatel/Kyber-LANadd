@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show File;
+import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:kyber_launcher/core/routing/app_router.dart';
 import 'package:kyber_launcher/core/services/notification_service.dart';
@@ -49,7 +50,7 @@ class NexusDownloadService {
 
     try {
       final fileId = Uri.parse(downloadUrl).queryParameters['file_id'];
-      final body = 'fid=$fileId&game_id=2229&collection_id=0';
+      final body = 'fid=$fileId&game_id=2229';
       webView = HeadlessInAppWebView(
         initialUrlRequest: URLRequest(
           url: WebUri(
@@ -96,7 +97,12 @@ class NexusDownloadService {
         const .new(seconds: 15),
       );
 
-      final filename = uri.split('/').last.split('?').first.replaceAll('%', '_');
+      final filename = uri
+          .split('/')
+          .last
+          .split('?')
+          .first
+          .replaceAll('%', '_');
 
       return (uri, filename);
     } on TimeoutException catch (e, s) {

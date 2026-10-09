@@ -1,12 +1,11 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:kyber_collection/kyber_collection.dart';
 import 'package:kyber_launcher/core/config/colors.dart';
-import 'package:kyber_launcher/features/mod_collections/extensions/mod_collection_extension.dart';
+import 'package:kyber_launcher/features/mod_collections/providers/mod_collection_cubit.dart';
 import 'package:kyber_launcher/features/mods/extensions/frosty_collection_extension.dart';
 import 'package:kyber_launcher/features/mods/services/mod_service.dart';
 import 'package:kyber_launcher/gen/fonts.gen.dart';
@@ -127,15 +126,15 @@ class _CollectionExportDialogState extends State<CollectionExportDialog> {
             onPressed: () async {
               total = modFiles.length - 1;
               await Future<void>.value().then((_) async {
-                final file = await FilePicker.saveFile(
+                print('Exporting collection with files');
+                final file = await FilePicker.platform.saveFile(
                   allowedExtensions: ['tar'],
                   dialogTitle: 'Export Collection',
-                  fileName: 'collection.tar',
-                  bytes: Uint8List(0),
-                  type: .custom,
+                  type: FileType.custom,
                 );
 
                 if (file == null) {
+                  print('User cancelled');
                   return;
                 }
 
@@ -146,6 +145,7 @@ class _CollectionExportDialogState extends State<CollectionExportDialog> {
                   tempDir.path,
                   '${widget.collection.title}.kbcollection',
                 );
+                print('Exporting collection to $tempCollectionFile');
                 await exportCollection(File(tempCollectionFile));
                 await Future.delayed(Duration(seconds: 1));
 
@@ -155,7 +155,7 @@ class _CollectionExportDialogState extends State<CollectionExportDialog> {
                   ..add(tempCollectionFile);
                 compressTar(
                   filePaths: paths,
-                  targetFile: file.path,
+                  targetFile: file,
                 ).listen(
                   (event) {
                     setState(() {

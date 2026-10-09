@@ -74,9 +74,6 @@ class RichPresence {
         ?.name;
     final mapAsset = server.levelSetup.map.replaceAll('/', '-').toLowerCase();
 
-    mode ??= MapHelper.getMode(server.levelSetup.mode)?.name;
-    mode = _rpcModeNames[mode] ?? mode;
-
     setRtmPresence(
       status: '$mode (${server.playerCount}/${server.maxPlayerCount})',
     );
@@ -84,6 +81,9 @@ class RichPresence {
     if (!Preferences.general.discordRPC) {
       return;
     }
+
+    mode ??= MapHelper.getMode(server.levelSetup.mode)?.name;
+    mode = _rpcModeNames[mode] ?? mode;
 
     if (map == null) {
       final gMode = MapHelper.getMode(server.levelSetup.mode);

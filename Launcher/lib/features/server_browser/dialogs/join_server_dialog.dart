@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:collection/collection.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/material.dart' as mt;
@@ -5,10 +6,10 @@ import 'package:grpc/grpc.dart' hide Server;
 import 'package:kyber/kyber.dart';
 import 'package:kyber_collection/kyber_collection.dart';
 import 'package:kyber_launcher/core/core.dart';
-import 'package:kyber_launcher/features/mod_collections/extensions/mod_collection_extension.dart';
+import 'package:kyber_launcher/features/kyber/services/map_helper.dart';
+import 'package:kyber_launcher/features/mod_collections/providers/mod_collection_cubit.dart';
 import 'package:kyber_launcher/features/mods/widgets/collection_list/collection_icon.dart';
-import 'package:kyber_launcher/features/server_browser/dialogs/server_ban_dialog.dart';
-import 'package:kyber_launcher/features/server_browser/models/server_entry.dart';
+import 'package:kyber_launcher/features/server_browser/models/server_filter.dart';
 import 'package:kyber_launcher/gen/assets.gen.dart';
 import 'package:kyber_launcher/gen/fonts.gen.dart';
 import 'package:kyber_launcher/injection_container.dart';
@@ -19,6 +20,7 @@ import 'package:kyber_launcher/shared/ui/dialog/kyber_dialog.dart';
 import 'package:kyber_launcher/shared/ui/elements/dropdown/kyber_dropdown.dart';
 import 'package:kyber_launcher/shared/ui/elements/kyber_input.dart';
 import 'package:kyber_launcher/shared/ui/elements/kyber_tab_bar.dart';
+import 'package:kyber_launcher/shared/ui/utils/button_builder.dart';
 import 'package:logging/logging.dart';
 
 class CosmeticModsDialog extends StatefulWidget {
@@ -28,7 +30,7 @@ class CosmeticModsDialog extends StatefulWidget {
     super.key,
   });
 
-  final ServerEntry server;
+  final Object server;
   final bool skipPasswordCheck;
 
   @override
@@ -41,6 +43,7 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
   String password = '';
   bool withoutMods = true;
   bool spectator = false;
+  bool showInstanceSelector = false;
 
   late Server serverInfo;
 
@@ -49,7 +52,9 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
 
   @override
   void initState() {
-    serverInfo = widget.server.serverInfo;
+    serverInfo = widget.server is ServerGroup
+        ? (widget.server as ServerGroup).getPreferredServer()
+        : widget.server as Server;
     correctPassword = widget.skipPasswordCheck || !serverInfo.requiresPassword;
     withoutMods = !Preferences.general.useCosmetics;
     final mods = serverInfo.mods
@@ -98,32 +103,32 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
     try {
       final service = sl.get<KyberGRPCService>();
       final result = await service.serverBrowserClient.canJoinServer(
-        .new(
-          id: serverInfo.id,
-          password: password,
-        ),
+        CanJoinServerRequest(id: serverInfo.id, password: password),
       );
 
-      if (result.deniedReason == .BANNED) {
-        await ServerBanDialog.show(context, banInfo: result.banInfo);
-        Navigator.of(context).pop(result);
-        return;
-      }
-
-      if (result.canJoin || result.deniedReason == .SERVER_FULL) {
+      if (result.canJoin) {
         return setState(() {
           correctPassword = true;
         });
       }
 
-      NotificationService.error(message: 'Invalid password');
+      NotificationService.showNotification(
+        message: 'Invalid password',
+        severity: InfoBarSeverity.error,
+      );
     } catch (e, s) {
       if (e is GrpcError && e.code == StatusCode.notFound) {
         Navigator.pop(context);
-        NotificationService.error(message: 'Server not found');
+        NotificationService.showNotification(
+          message: 'Server not found',
+          severity: InfoBarSeverity.error,
+        );
       } else {
         Logger.root.severe('An error occurred', e, s);
-        NotificationService.error(message: 'An error occurred');
+        NotificationService.showNotification(
+          message: 'An error occurred',
+          severity: InfoBarSeverity.error,
+        );
       }
     }
   }
@@ -132,10 +137,7 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
   Widget build(BuildContext context) {
     return KyberContentDialog(
       title: Text('Start Game'.toUpperCase()),
-      constraints: const .new(
-        maxHeight: 500,
-        maxWidth: 700,
-      ),
+      constraints: const BoxConstraints(maxHeight: 500, maxWidth: 700),
       content: SizedBox(
         width: 450,
         child: Builder(
@@ -166,6 +168,204 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
 
             return Column(
               children: [
+                if (widget.server is ServerGroup) ...[
+                  RichText(
+                    text: TextSpan(
+                      text: 'JOINING INSTANCE ',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        color: kWhiteColor,
+                        fontFamily: FontFamily.battlefrontUI,
+                      ),
+                      children: [
+                        TextSpan(
+                          text:
+                              '#${(widget.server as ServerGroup).getInstanceId(serverInfo.id)}',
+                          style: TextStyle(color: kActiveColor),
+                        ),
+                        const TextSpan(
+                          text: ' | ',
+                          style: TextStyle(color: decoColor),
+                        ),
+                        TextSpan(
+                          text:
+                              '(${serverInfo.playerCount}/${serverInfo.maxPlayerCount})',
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (!showInstanceSelector) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: ButtonBuilder(
+                        onClick: () =>
+                            setState(() => showInstanceSelector = true),
+                        builder: (context, hovered) {
+                          return Text(
+                            'CHANGE INSTANCE',
+                            style: TextStyle(
+                              color: hovered ? kActiveColor : kWhiteColor,
+                              fontFamily: FontFamily.battlefrontUI,
+                              decoration: TextDecoration.underline,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ] else ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 5),
+                      child: KyberDropdown<Server>(
+                        onChanged: (value) {
+                          setState(() => serverInfo = value);
+                        },
+                        itemBuilder: (DropdownItem<dynamic> item) {
+                          item as DropdownItem<Server>;
+                          final instanceId = (widget.server as ServerGroup)
+                              .getInstanceId(item.value.id);
+                          final serverInfo = item.value;
+                          return Row(
+                            children: [
+                              SizedBox(
+                                width: 70,
+                                height: 45,
+                                child: Builder(
+                                  builder: (context) {
+                                    if (serverInfo.mapImageHash.isNotEmpty) {
+                                      return CachedNetworkImage(
+                                        imageUrl:
+                                            'https://${sl.get<KyberGRPCService>().httpHostname}/images/${serverInfo.mapImageHash}.jpeg',
+                                        fit: BoxFit.cover,
+                                        alignment: Alignment.centerLeft,
+                                        colorBlendMode: BlendMode.darken,
+                                        color: Colors.black.withOpacity(.12),
+                                      );
+                                    }
+
+                                    return MapHelper.getImageForMap(
+                                      serverInfo.levelSetup.map,
+                                    )!.image(
+                                      fit: BoxFit.cover,
+                                      alignment: Alignment.centerLeft,
+                                      colorBlendMode: BlendMode.darken,
+                                      color: Colors.black.withOpacity(.12),
+                                    );
+                                  },
+                                ),
+                              ),
+                              Container(width: 2, height: 45, color: decoColor),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                      ).copyWith(top: 5),
+                                      child: Text(
+                                        'INSTANCE #$instanceId',
+                                        style: const TextStyle(
+                                          fontFamily: FontFamily.battlefrontUI,
+                                          fontSize: 16,
+                                          height: 1,
+                                        ),
+                                      ),
+                                    ),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          RichText(
+                                            text: TextSpan(
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                color: kWhiteColor1,
+                                                fontFamily:
+                                                    FontFamily.battlefrontUI,
+                                              ),
+                                              children: [
+                                                TextSpan(
+                                                  text:
+                                                      serverInfo
+                                                          .levelSetup
+                                                          .modeName
+                                                          .isNotEmpty
+                                                      ? serverInfo
+                                                            .levelSetup
+                                                            .modeName
+                                                      : MapHelper.getMode(
+                                                              serverInfo
+                                                                  .levelSetup
+                                                                  .mode,
+                                                            )?.name ??
+                                                            'UNKNOWN MODE',
+                                                ),
+                                                const TextSpan(
+                                                  text: ' | ',
+                                                  style: TextStyle(
+                                                    color: decoColor,
+                                                  ),
+                                                ),
+                                                TextSpan(
+                                                  text:
+                                                      serverInfo
+                                                          .levelSetup
+                                                          .mapName
+                                                          .isNotEmpty
+                                                      ? serverInfo
+                                                            .levelSetup
+                                                            .mapName
+                                                      : MapHelper.getMap(
+                                                              serverInfo
+                                                                  .levelSetup
+                                                                  .mode,
+                                                              serverInfo
+                                                                  .levelSetup
+                                                                  .map,
+                                                            )?.name ??
+                                                            'UNKNOWN MAP',
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                ),
+                                child: Text(
+                                  '${item.value.playerCount}/${item.value.maxPlayerCount}',
+                                  style: const TextStyle(
+                                    fontFamily: FontFamily.battlefrontUI,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                        items: (widget.server as ServerGroup).getSorted().map((
+                          e,
+                        ) {
+                          return DropdownItem(
+                            value: e,
+                            label:
+                                'INSTANCE #${(widget.server as ServerGroup).getInstanceId(e.id)}',
+                          );
+                        }).toList(),
+                        selectedItem: serverInfo,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 15),
+                ],
                 const Text('PLAY WITH OR WITHOUT COSMETIC MODS'),
                 const Text(
                   'Select an option to load the game with or without cosmetic mods.',
@@ -208,7 +408,7 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
                           Container(width: 2, height: 40, color: decoColor),
                           Expanded(
                             child: Padding(
-                              padding: const .symmetric(
+                              padding: const EdgeInsets.symmetric(
                                 horizontal: 10,
                               ),
                               child: Text(
@@ -270,27 +470,28 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
                         ),
                       );
 
-                  if (!result.canJoin && result.hasBanInfo()) {
-                    await ServerBanDialog.show(
-                      context,
-                      banInfo: result.banInfo,
+                  if (!result.canJoin) {
+                    NotificationService.showNotification(
+                      message: result.reason,
+                      severity: InfoBarSeverity.error,
                     );
-                    Navigator.of(context).pop(result);
                     return;
                   }
                 } catch (e, s) {
                   if (e is GrpcError && e.code == StatusCode.permissionDenied) {
                     Logger.root.severe('An error occurred', e, s);
                     Navigator.pop(context);
-                    NotificationService.error(
+                    NotificationService.showNotification(
                       message: e.message ?? 'You are banned from this server',
+                      severity: InfoBarSeverity.error,
                     );
                   } else {
                     Logger.root.severe('An error occurred', e, s);
-                    NotificationService.error(
+                    NotificationService.showNotification(
                       message: e is GrpcError
                           ? e.message ?? e.code.toString()
                           : 'An error occurred',
+                      severity: InfoBarSeverity.error,
                     );
                   }
                   return;
@@ -303,6 +504,9 @@ class _CosmeticModsDialogState extends State<CosmeticModsDialog> {
                     : selectedCollection ?? ModCollectionMetaData.noMods(),
                 spectator: spectator,
                 password: password,
+                instanceId: widget.server is ServerGroup
+                    ? serverInfo.meta['instance_id']
+                    : null,
               );
 
               Navigator.of(context).pop(result);

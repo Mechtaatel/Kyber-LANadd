@@ -93,6 +93,4 @@ void RegisterGlobals(lua_State* L)
     luaL_setfuncs(L, printFuncs, 0);
     lua_pop(L, 1);
 }
-
-KB_REGISTER_LUA_CONTENT(RegisterGlobals);
 } // namespace Kyber::Script
