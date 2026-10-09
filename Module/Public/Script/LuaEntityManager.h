@@ -10,6 +10,8 @@ namespace Kyber
 {
 class LuaEntityManager
 {
+    friend class ScriptManager;
+
 public:
     static const NativeEntity** WrapEntity(NativeEntity* entity);
     static const EntityBus** WrapEntityBus(EntityBus* entity);
@@ -17,9 +19,9 @@ public:
     static NativeEntity* GetEntity(int index);
     static EntityBus* GetEntityBus(int index);
 
-    static void Register(lua_State* L);
-
 private:
+    static void Register(lua_State* lua);
+
     static lua_State* s_lua;
 };
 } // namespace Kyber

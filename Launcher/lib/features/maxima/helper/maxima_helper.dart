@@ -261,6 +261,9 @@ class MaximaHelper {
       clientService: gameClient,
       isDedicated: false,
       mods: mods ?? [],
+      loadedModPaths: List<String>.unmodifiable(
+        initializeRequest?.modData.modPaths ?? const <String>[],
+      ),
     );
 
     try {

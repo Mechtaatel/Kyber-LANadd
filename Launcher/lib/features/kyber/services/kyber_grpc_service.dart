@@ -54,12 +54,17 @@ class LauncherService extends LauncherCommonServiceBase {
   @override
   Future<Empty> onServerJoined(ServiceCall call, Empty request) async {
     final context = navigatorKey.currentContext!;
-    context.read<KyberStatusCubit>()
-      ..joined = true
-      ..onTick();
-
     final sessionCubit = context.read<SessionCubit>();
-    final kyberStatus = context.read<KyberStatusCubit>().state;
+    final statusCubit = context.read<KyberStatusCubit>()..joined = true;
+    await statusCubit.onTick();
+
+    Logger.root.info('Server joined notification received');
+    if (sl.isRegistered<MaximaGameInstance>() &&
+        sl.get<MaximaGameInstance>().lanOnly) {
+      return Empty();
+    }
+
+    final kyberStatus = statusCubit.state;
     String? serverId;
 
     if (kyberStatus is KyberStatusPlaying) {
@@ -67,8 +72,6 @@ class LauncherService extends LauncherCommonServiceBase {
     } else if (kyberStatus is KyberStatusHosting) {
       serverId = kyberStatus.server?.id;
     }
-
-    Logger.root.info('Server joined notification received');
 
     if (serverId == null) {
       Logger.root.warning(
@@ -93,27 +96,32 @@ class LauncherService extends LauncherCommonServiceBase {
       }
     }
 
-    await sessionCubit.onJoined(serverId: serverId);
+    if (!serverId.startsWith('lan:')) {
+      await sessionCubit.onJoined(serverId: serverId);
+    }
 
-    Logger.root.info('Server joined notification received');
     return Future.value(Empty());
   }
 
   @override
   Future<Empty> onServerLeft(ServiceCall call, Empty request) async {
-    navigatorKey.currentContext!.read<KyberStatusCubit>()
-      ..joined = false
-      ..onTick();
-
     final context = navigatorKey.currentContext!;
-    final stateCubit = context.read<SessionCubit>()..leaveGame();
+    final stateCubit = context.read<SessionCubit>();
+    final statusCubit = context.read<KyberStatusCubit>()..joined = false;
+    await statusCubit.onTick();
 
-    final kyberStatus = context.read<KyberStatusCubit>().state;
+    Logger.root.info('Server left notification received');
+    if (sl.isRegistered<MaximaGameInstance>() &&
+        sl.get<MaximaGameInstance>().lanOnly) {
+      return Empty();
+    }
+
+    stateCubit.leaveGame();
+    final kyberStatus = statusCubit.state;
     if (kyberStatus is KyberStatusHosting) {
       await stateCubit.cancelJoinGame();
     }
 
-    Logger.root.info('Server left notification received');
     return Future.value(Empty());
   }
 }

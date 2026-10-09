@@ -562,20 +562,20 @@ static void PushFBArrayValue(lua_State* L, LuaFBArrayData* data, int32_t index)
         }
 
         LuaDataContainer::WrapDataContainer(L, reinterpret_cast<DataContainer*>(target));
-        luaL_setmetatable(L, "DataContainer");
+        luaL_getmetatable(L, "DataContainer");
+        lua_setmetatable(L, -2);
         break;
     }
     case kTypeCode_ValueType: {
         // since we cant get the size of the type and feed it into a fbarray dynamically we have to do some nasty things
         uintptr_t base = reinterpret_cast<uintptr_t>(*(void**)data->value);
         uint16_t typeSize = elementTypeInfo->typeInfoData->totalSize;
-        KYBER_LOG(Debug, "Wrapping value type: " << std::hex << base << " " << index << " " << elementTypeInfo->typeInfoData->name << " "
-                                                 << typeSize << " " << std::hex << reinterpret_cast<void*>(base + (typeSize * index)));
+        KYBER_LOG(Debug,
+            "Wrapping value type: " << std::hex << base << " " << index << " " << elementTypeInfo->typeInfoData->name << " " << typeSize);
 
         LuaDataContainer::WrapValueType(L, elementTypeInfo, reinterpret_cast<void*>(base + (typeSize * index)));
-        luaL_getmetatable(L, elementTypeInfo->typeInfoData->name);
+        luaL_setmetatable(L, elementTypeInfo->typeInfoData->name);
         lua_setmetatable(L, -2);
-        break;
     }
     case kTypeCode_Array: {
         void* target = array[index];
@@ -587,14 +587,14 @@ static void PushFBArrayValue(lua_State* L, LuaFBArrayData* data, int32_t index)
         }
 
         LuaDataContainer::WrapFBArray(L, elementTypeInfo, reinterpret_cast<FBArray<void*>*>(target));
-        luaL_setmetatable(L, "FBArray");
+        luaL_getmetatable(L, "FBArray");
+        lua_setmetatable(L, -2);
         break;
     }
     default:
         KYBER_LOG(Warning, "Unsupported array type: " << elementTypeInfo->typeInfoData->name << " at " << std::hex << data->value << " "
                                                       << data << " " << elementTypeInfo->getBasicType());
         lua_pushnil(L);
-        break;
     }
 }
 
@@ -719,12 +719,12 @@ static int FBArrayIterator(lua_State* L)
 {
     LuaFBArrayData* data = LuaDataContainer::GetFBArray(L, 1);
     int32_t index = luaL_checkinteger(L, 2);
-    
+
     if (index >= data->value->size())
     {
         return 0;
     }
-    
+
     lua_pushinteger(L, index + 1);
     PushFBArrayValue(L, data, index);
 
@@ -836,7 +836,7 @@ LuaFBArrayData* LuaDataContainer::WrapFBArray(lua_State* L, const TypeInfo* elem
 
     if (elementType->getBasicType() != kTypeCode_Array)
     {
-        KYBER_LOG(Error, "Invalid type wrapped as FBArray: " << elementType->getName() << " " << elementType->getBasicType());
+        KYBER_LOG(Error, "Invalid type wrapped as FBArray");
     }
 
     userdata->value = arr;
@@ -858,7 +858,6 @@ static int DataContainerCreateFunc(lua_State* L)
     KYBER_LOG(Info, "Creating instance of " << info->typeInfoData->name);
 
     DataContainer* container = DataContainerClassInfo_createInstance(info, FB_GLOBAL_ARENA, true, true);
-    container->m_dcType = info;
     LuaDataContainer::WrapDataContainer(L, container);
 
     luaL_getmetatable(L, "DataContainer");
@@ -887,9 +886,6 @@ static int ValueTypeCreateFunc(lua_State* L)
 {
     TypeInfo* info = (TypeInfo*)lua_touserdata(L, lua_upvalueindex(1));
     LuaDataContainer::ValueTypeCreate(L, info);
-
-    luaL_getmetatable(L, "ValueType");
-    lua_setmetatable(L, -2);
     return 1;
 }
 
@@ -908,14 +904,14 @@ void LuaDataContainer::RegisterTypeConstructors(lua_State* L)
 
         lua_pop(L, 1);
 
+        lua_pushlightuserdata(L, info);
+
         if (info->getBasicType() == kTypeCode_Class && info->isKindOf(typeInfo_DataContainer))
         {
-            lua_pushlightuserdata(L, info);
             lua_pushcclosure(L, DataContainerCreateFunc, 1);
         }
         else if (info->getBasicType() == kTypeCode_ValueType)
         {
-            lua_pushlightuserdata(L, info);
             lua_pushcclosure(L, ValueTypeCreateFunc, 1);
 
             luaL_newmetatable(L, name);
@@ -927,8 +923,9 @@ void LuaDataContainer::RegisterTypeConstructors(lua_State* L)
         }
         else if (info->getBasicType() == kTypeCode_Enum)
         {
+            TypeInfo* info = (TypeInfo*)lua_touserdata(L, -1);
             EnumTypeInfoData* data = (EnumTypeInfoData*)info->typeInfoData;
-            
+
             lua_newtable(L);
             for (int i = 0; i < data->fieldCount; i++)
             {
@@ -939,12 +936,11 @@ void LuaDataContainer::RegisterTypeConstructors(lua_State* L)
         }
         else
         {
+            lua_pop(L, 1);
             continue;
         }
 
         lua_setglobal(L, name);
     }
 }
-
-KB_REGISTER_LUA_CONTENT_MANAGER(LuaDataContainer);
 } // namespace Kyber

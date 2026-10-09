@@ -45,8 +45,11 @@ class SessionCubit extends Cubit<SessionState> {
   final _logger = Logger('session_cubit');
   late final KyberGRPCService _service = sl<KyberGRPCService>();
   IOWebSocketChannel? _channel;
+  StreamSubscription<dynamic>? _sessionSubscription;
   Timer? _keepAliveTimer;
+  Timer? _reconnectTimer;
   Timer? _partyDownloadChecker;
+  bool _connecting = false;
   bool gameJoined = false;
   bool _leftGame = false;
   int _reconnectAttempts = 0;
@@ -64,9 +67,49 @@ class SessionCubit extends Cubit<SessionState> {
   @override
   Future<void> close() async {
     _keepAliveTimer?.cancel();
+    _reconnectTimer?.cancel();
     _partyDownloadChecker?.cancel();
-    await _channel?.sink.close();
+    final channel = _channel;
+    _channel = null;
+    await _sessionSubscription?.cancel();
+    _sessionSubscription = null;
+    if (channel != null) await _closeSessionChannel(channel);
     return super.close();
+  }
+
+  Future<void> _closeSessionChannel(IOWebSocketChannel channel) async {
+    try {
+      await channel.sink.close();
+    } on Object catch (error) {
+      _logger.fine('Session channel already closed', error);
+    }
+  }
+
+  void _sessionDisconnected(IOWebSocketChannel channel) {
+    if (!identical(_channel, channel)) return;
+    _channel = null;
+    _keepAliveTimer?.cancel();
+    _keepAliveTimer = null;
+    final subscription = _sessionSubscription;
+    _sessionSubscription = null;
+    if (subscription != null) unawaited(subscription.cancel());
+    unawaited(_closeSessionChannel(channel));
+    _reconnect();
+  }
+
+  void _sendSessionData(Object data) {
+    final channel = _channel;
+    if (isClosed || LanMode.enabled || channel == null) return;
+    try {
+      channel.sink.add(data);
+    } on Object catch (error, stack) {
+      _logger.warning(
+        'Session channel closed before sending event',
+        error,
+        stack,
+      );
+      _sessionDisconnected(channel);
+    }
   }
 
   Future<void> inviteToParty(String userId) {
@@ -88,7 +131,7 @@ class SessionCubit extends Cubit<SessionState> {
   void leaveGame() {
     gameJoined = false;
     _leftGame = true;
-    _channel?.sink.add(
+    _sendSessionData(
       SessionClientEvent(
         gameLeft: .new(),
       ).writeToBuffer(),
@@ -176,7 +219,8 @@ class SessionCubit extends Cubit<SessionState> {
   Future<void> onJoined({required String serverId}) async {
     gameJoined = true;
     _clearQueueInfo();
-    _channel?.sink.add(
+    if (serverId.startsWith('lan:')) return;
+    _sendSessionData(
       SessionClientEvent(
         gameJoined: .new(serverId: serverId),
       ).writeToBuffer(),
@@ -411,7 +455,7 @@ class SessionCubit extends Cubit<SessionState> {
   }
 
   Future<void> joinAllReadyPlayers() async {
-    _channel?.sink.add(
+    _sendSessionData(
       SessionClientEvent(joinGameReady: .new()).writeToBuffer(),
     );
   }
@@ -566,69 +610,89 @@ class SessionCubit extends Cubit<SessionState> {
   }
 
   Future<void> connect() async {
-    if (isClosed || LanMode.enabled) return;
+    if (isClosed || LanMode.enabled || _connecting) return;
     final userId = _userId;
     if (userId == null) {
       _logger.warning('User ID is null, cannot connect to session');
       return;
     }
 
-    _keepAliveTimer?.cancel();
-    await _channel?.sink.close();
-
-    if (!sl.isReadySync<ModService>()) {
-      _logger.warning(
-        'ModService not ready, waiting before connecting to session stream',
-      );
-      await sl.isReady<ModService>();
-    }
-
-    _channel = IOWebSocketChannel.connect(
-      'wss://api.${Preferences.admin.apiEnv}.kyber.gg/ws/session',
-      headers: {'Authorization': sl.get<KyberGRPCService>().token},
-      connectTimeout: const Duration(seconds: 10),
-    );
-
+    _connecting = true;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
     try {
-      await _channel?.ready;
-    } catch (e) {
-      _logger.warning('Failed to connect to session stream', e);
-      _reconnect();
-      rethrow;
+      _keepAliveTimer?.cancel();
+      final previous = _channel;
+      _channel = null;
+      await _sessionSubscription?.cancel();
+      _sessionSubscription = null;
+      if (previous != null) await _closeSessionChannel(previous);
+
+      if (!sl.isReadySync<ModService>()) {
+        _logger.warning(
+          'ModService not ready, waiting before connecting to session stream',
+        );
+        await sl.isReady<ModService>();
+      }
+      if (isClosed || LanMode.enabled) return;
+
+      final channel = IOWebSocketChannel.connect(
+        'wss://api.${Preferences.admin.apiEnv}.kyber.gg/ws/session',
+        headers: {'Authorization': sl.get<KyberGRPCService>().token},
+        connectTimeout: const Duration(seconds: 10),
+      );
+      try {
+        await channel.ready;
+      } on Object catch (error) {
+        await _closeSessionChannel(channel);
+        _logger.warning('Failed to connect to session stream', error);
+        _reconnect();
+        rethrow;
+      }
+      if (isClosed || LanMode.enabled) {
+        await _closeSessionChannel(channel);
+        return;
+      }
+
+      // Publish only an open channel. A failed handshake must not leave a
+      // closed sink available to the game's join/leave RPC callbacks.
+      _channel = channel;
+      _sessionSubscription = channel.stream.listen(
+        (event) {
+          if (!identical(_channel, channel) || isClosed) return;
+          try {
+            final data = SessionEvent.fromBuffer(event as Uint8List);
+            final _ = switch (data.whichBody()) {
+              .partyEvent => _handlePartyEvent(data.partyEvent),
+              .checkForUpdates => _handleUpdateCheck(),
+              .proxiesUpdated => _handleProxiesEvent(data.proxiesUpdated),
+              .queueEvent => _handleQueueEvent(data.queueEvent),
+              _ => null,
+            };
+          } catch (e, s) {
+            _logger.severe('Error parsing session event', e, s);
+          }
+        },
+        onDone: () {
+          _logger.info('Session stream done');
+          _sessionDisconnected(channel);
+        },
+        onError: (dynamic e, StackTrace s) {
+          _logger.severe('Session stream error', e, s);
+          _sessionDisconnected(channel);
+        },
+      );
+
+      _keepAliveTimer = Timer.periodic(
+        const .new(seconds: 10),
+        (_) => _sendSessionData(''),
+      );
+      _reconnectAttempts = 0;
+
+      unawaited(_syncState());
+    } finally {
+      _connecting = false;
     }
-
-    _channel?.stream.listen(
-      (event) {
-        try {
-          final data = SessionEvent.fromBuffer(event as Uint8List);
-          final _ = switch (data.whichBody()) {
-            .partyEvent => _handlePartyEvent(data.partyEvent),
-            .checkForUpdates => _handleUpdateCheck(),
-            .proxiesUpdated => _handleProxiesEvent(data.proxiesUpdated),
-            .queueEvent => _handleQueueEvent(data.queueEvent),
-            _ => null,
-          };
-        } catch (e, s) {
-          _logger.severe('Error parsing session event', e, s);
-        }
-      },
-      onDone: () {
-        _logger.info('Session stream done');
-        _reconnect();
-      },
-      onError: (dynamic e, StackTrace s) {
-        _logger.severe('Session stream error', e, s);
-        _reconnect();
-      },
-    );
-
-    _keepAliveTimer = Timer.periodic(
-      const .new(seconds: 10),
-      (_) async => _channel?.sink.add(''),
-    );
-    _reconnectAttempts = 0;
-
-    unawaited(_syncState());
   }
 
   Future<void> _syncState() async {
@@ -709,7 +773,11 @@ class SessionCubit extends Cubit<SessionState> {
     _logger.info(
       'Reconnecting in ${delay.inSeconds}s (attempt $_reconnectAttempts)',
     );
-    Future.delayed(delay, () => connect().catchError((Object _) {}));
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(delay, () {
+      _reconnectTimer = null;
+      unawaited(connect().catchError((Object _) {}));
+    });
   }
 
   void _handleProxiesEvent(ProxiesUpdatedEvent event) async {
@@ -1093,7 +1161,7 @@ class SessionCubit extends Cubit<SessionState> {
   }
 
   void _sendModStatus({required bool hasMods, int? modDownloadPercentage}) {
-    _channel?.sink.add(
+    _sendSessionData(
       SessionClientEvent(
         updateJoinGameStatus: UpdateJoinGameStatusEvent(
           hasMods: hasMods,

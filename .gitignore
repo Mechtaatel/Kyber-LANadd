@@ -26,3 +26,6 @@ __pycache__/
 *.log
 *.dmp
 *.mdmp
+
+# Sentry native cache and session data are local runtime artifacts.
+.sentry-native/

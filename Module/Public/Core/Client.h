@@ -8,8 +8,6 @@
 #include <Core/EventManager.h>
 #include <Network/SocketManager.h>
 #include <Voip/VoipManager.h>
-#include <Misc/SquadManager/ClientSquadManager.h>
-#include <Misc/PlayerGameplayManager.h>
 
 #define OFFSET_GET_CLIENT_INSTANCE 0x14659DE50
 
@@ -49,8 +47,6 @@ public:
     SocketManager* m_socketManager;
     VoipManager* m_voipManager;
     EventManager* m_eventManager;
-    ClientSquadManager* m_squadManager;
-    ClientPlayerGameplayManager* m_gameplayManager;
 
     std::vector<ClientUpdatePassListener*> m_updatePassListeners;
 

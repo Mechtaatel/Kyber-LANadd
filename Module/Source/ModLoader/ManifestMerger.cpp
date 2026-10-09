@@ -308,7 +308,7 @@ void LayoutManifest::PrintAudit(uint32_t bundleHash)
 
 void ProcessManifestHk(CasFileMap* fileMap, uint8_t* manifestBuf)
 {
-    static const auto trampoline = HookManager::Call(ProcessManifestHk);
+    static auto trampoline = HookManager::Call(ProcessManifestHk);
     if (!g_manifestMerger->HasMerger())
     {
         trampoline(fileMap, manifestBuf);
@@ -320,7 +320,7 @@ void ProcessManifestHk(CasFileMap* fileMap, uint8_t* manifestBuf)
 
     KYBER_LOG(Info, "[ModLoader] Loading layout manifest size " << size);
 
-    LayoutManifest* manifest = new (FB_STATIC_ARENA) LayoutManifest();
+    LayoutManifest* manifest = new LayoutManifest();
     manifest->Load(*data, *size);
     g_manifestMerger->Merge(*manifest);
     std::vector<uint8_t> modified = manifest->Save();
@@ -341,8 +341,6 @@ void ProcessManifestHk(CasFileMap* fileMap, uint8_t* manifestBuf)
 
     *data = originalData;
     *size = originalSize;
-
-    FB_STATIC_ARENA->free(modifiedBuffer);
 
     KYBER_LOG(Info, "[ModLoader] Loaded modified layout manifest size " << modified.size());
 }

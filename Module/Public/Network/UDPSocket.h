@@ -6,8 +6,6 @@
 #include <SDK/SDK.h>
 #include <Network/WebSocket.h>
 
-#include <Proto/kyber_api.grpc.pb.h>
-
 #include <cstring>
 #include <cstdint>
 #include <list>
@@ -101,13 +99,8 @@ struct ISocket
     virtual ~ISocket() {};
 
     virtual bool Send(uint8_t* sendBuffer, int size, unsigned int flags = 0) = 0;
-    virtual int ReceiveFrom(uint8_t* buffer, int bufferSize)
-    {
-        unsigned int recievedWhen;
-        return ReceiveFromWhen(buffer, bufferSize, recievedWhen);
-    }
-
-	virtual int ReceiveFromWhen(uint8_t* receiveBuffer, int maxSize, unsigned int& receivedWhen) = 0;
+    virtual int ReceiveFrom(uint8_t* buffer, int bufferSize) = 0;
+	virtual int ReceiveFromWhen(uint8_t* receiveBuffer, int maxSize, unsigned int& receivedWhen);
     virtual bool SetBroadcast(uint16_t port) = 0;
     virtual void SetPeerAddress(const SocketAddr& sockAddr) = 0;
     virtual SocketAddr PeerAddress() const = 0;
@@ -140,7 +133,7 @@ public:
     virtual bool Create(bool blocking = false) override;
     void Close();
     virtual bool Send(uint8_t* buffer, int bufferSize, unsigned int flags = 0) override;
-    virtual int ReceiveFromWhen(uint8_t* buffer, int bufferSize, unsigned int& when) override;
+    virtual int ReceiveFrom(uint8_t* buffer, int bufferSize) override;
     virtual bool SetBroadcast(uint16_t port) override;
     virtual void SetPeerAddress(const SocketAddr& sockAddr) override;
     virtual SocketAddr PeerAddress() const override;
@@ -153,11 +146,11 @@ public:
     virtual intptr_t NativeSocket() const override;
     virtual int Port() const override;
     virtual const SocketAddr* Address() const override;
-    void UpdateProxies(const eastl::vector<kyber_api::ProxyInfo>& newList);
-    void ReconnectProxies();
 
 private:
     friend class SocketManager;
+
+    void showError();
 
     SocketAddr m_broadcastAddress;
     SocketAddr m_peerAddress;

@@ -17,6 +17,18 @@ $requiredRelease = @('kyber_launcher.exe', 'flutter_windows.dll', 'rust_lib.dll'
 $requiredMaxima = @('maxima-bootstrap.exe', 'maxima-service.exe')
 $requiredModule = @('Kyber.dll', 'vivoxsdk.dll', 'ca_root.pem', 'VanillaBundleAggregation.kb', 'LAN-MODULE', 'VERSION')
 $requiredRuntime = @('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
+$nativeAssets = Join-Path $repo 'Launcher/build/native_assets/windows'
+if (!(Test-Path -LiteralPath (Join-Path $nativeAssets 'rust_lib.dll') -PathType Leaf)) {
+    throw 'Fresh Rust native assets are missing; rebuild the launcher.'
+}
+foreach ($asset in Get-ChildItem -LiteralPath $nativeAssets -Filter '*.dll' -File) {
+    $installedAsset = Join-Path $release $asset.Name
+    if (!(Test-Path -LiteralPath $installedAsset -PathType Leaf) -or
+        (Get-FileHash -LiteralPath $installedAsset -Algorithm SHA256).Hash -ne
+        (Get-FileHash -LiteralPath $asset.FullName -Algorithm SHA256).Hash) {
+        throw "Native library $($asset.Name) is missing or stale in the release directory; rebuild the launcher."
+    }
+}
 $sourceVersionPath = Join-Path $repo 'Launcher/assets/lan_add_version.txt'
 $builtVersionPath = Join-Path $release 'data/flutter_assets/assets/lan_add_version.txt'
 if (!(Test-Path -LiteralPath $builtVersionPath -PathType Leaf)) {
@@ -59,6 +71,25 @@ Get-ChildItem -LiteralPath $RuntimeDirectory -Filter '*.dll' | Where-Object {
 }
 Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination $destination
 Copy-Item -LiteralPath (Join-Path $repo 'docs/LAN.md') -Destination $destination
+# Release directories can retain BUILD-INFO from an earlier local build.
+# Record the actual packaged launcher and DLL rather than copying that claim.
+$packagedDll = Join-Path $module.FullName 'Kyber.dll'
+$moduleBytes = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($packagedDll))
+$engineVersions = @([regex]::Matches($moduleBytes, '2\.0\.0-beta\d+') | ForEach-Object {
+    $_.Value
+} | Sort-Object -Unique)
+$buildInfo = [ordered]@{
+    packagedAtUtc = [DateTime]::UtcNow.ToString('o')
+    sourceCommit = (& git -C $repo rev-parse HEAD).Trim()
+    sourceDirty = @(& git -C $repo status --porcelain).Count -gt 0
+    launcherVersion = (Get-Item -LiteralPath (Join-Path $destination 'kyber_launcher.exe')).VersionInfo.ProductVersion
+    lanAddVersion = $builtVersion
+    moduleVersion = [IO.File]::ReadAllText((Join-Path $module.FullName 'VERSION')).Trim()
+    moduleEngineVersionLiterals = $engineVersions
+    moduleSha256 = (Get-FileHash -LiteralPath $packagedDll -Algorithm SHA256).Hash.ToLowerInvariant()
+    gameConnectionTested = $false
+}
+[IO.File]::WriteAllText((Join-Path $destination 'BUILD-INFO.json'), ($buildInfo | ConvertTo-Json -Depth 4), [Text.UTF8Encoding]::new($false))
 $sums = @(Get-ChildItem -LiteralPath $destination -File -Recurse | Sort-Object FullName | ForEach-Object {
     $relative = $_.FullName.Substring($destination.Length + 1).Replace('\', '/')
     "$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $relative"

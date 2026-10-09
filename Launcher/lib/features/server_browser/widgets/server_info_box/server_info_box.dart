@@ -356,13 +356,16 @@ class _ServerInfoBoxState extends State<ServerInfoBox> {
                                       '${serverInfo.playerCount}/${serverInfo.maxPlayerCount}',
                                 ),
                               ),
-                              if (serverInfo.region.isNotEmpty &&
-                                  (selectedRegion == null ||
-                                      selectedRegion == .all))
+                              if (serverInfo.isLan ||
+                                  (serverInfo.region.isNotEmpty &&
+                                      (selectedRegion == null ||
+                                          selectedRegion == .all)))
                                 SizedBox(
-                                  width: 40,
+                                  width: 55,
                                   child: _Badge(
-                                    text: serverInfo.region.toUpperCase(),
+                                    text: serverInfo.isLan
+                                        ? 'LAN'
+                                        : serverInfo.region.toUpperCase(),
                                   ),
                                 ),
                               if (regions.length > 1) ...[

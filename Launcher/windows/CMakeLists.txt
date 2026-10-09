@@ -82,6 +82,13 @@ if(PLUGIN_BUNDLED_LIBRARIES)
     COMPONENT Runtime)
 endif()
 
+# Rust build hooks now provide their libraries as native assets rather than
+# Flutter plugins. Install them beside the executable, including on rebuilds.
+set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/windows/")
+install(DIRECTORY "${NATIVE_ASSETS_DIR}"
+  DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+  COMPONENT Runtime)
+
 # Fully re-copy the assets directory on each build to avoid having stale files
 # from a previous install.
 set(FLUTTER_ASSET_DIR_NAME "flutter_assets")

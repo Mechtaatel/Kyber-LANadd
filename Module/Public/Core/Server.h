@@ -8,14 +8,13 @@
 #include <SDK/Types.h>
 #include <Core/Settings.h>
 #include <Persistence/PersistenceManager.h>
-#include <Misc/SquadManager/ServerSquadManager.h>
-#include <Misc/ChatFilter.h>
 #include <Core/EventManager.h>
 
 #include <Windows.h>
 #include <optional>
 #include <string>
-#include <xhash>
+
+#define OFFSET_SERVERGAMECONTEXT_INSTANCE 0x143EC7238
 
 namespace Kyber
 {
@@ -39,14 +38,10 @@ struct ServerCreationInfo
 class ServerPlayerAuthenticatedEvent : public Event
 {
 public:
-    ServerConnection* connection;
-    uint64_t groupId;
-};
+    uint64_t userId;
 
-class ServerPlayerDisconnectedEvent : public Event
-{
-public:
-    ServerPlayer* player;
+    void* connection;
+    NetworkCreatePlayerMessage* message;
 };
 
 class MainLoopInitStartServerEvent : public Event
@@ -76,7 +71,7 @@ class Server : public EventListener
 {
 public:
     Server();
-    ~Server() override;
+    ~Server();
 
     bool IsRunning();
 
@@ -86,36 +81,31 @@ public:
     void DisableGameHooks();
     void InitializeGamePatches();
     void InitializeGameSettings();
-    void InitializeChatFilterPreset();
     void OnClientStartup();
+    void SendConsoleMessage(const std::string& message);
 
-    // Note: Only to be ran for in-proc servers, not designed for dedicated.
     void Start(const ServerCreationInfo& info, bool changeState = true);
     void Stop();
 
     void Heartbeat(const UpdateParameters& params);
     void PollLanDiscovery();
     void CloseLanDiscovery();
-    void Register(bool force = false, bool reuseId = false);
+    void Register(bool force = false);
 
     void OnEvent(const Event& event) override;
 
     void OnSettingsRegistered();
     void OnLevelLoaded();
 
-    void InitializePlayer(ServerPlayer* player);
-
     ServerGameContext* GetServerGameContext()
     {
-        return ServerGameContext::Get();
+        return *reinterpret_cast<ServerGameContext**>(OFFSET_SERVERGAMECONTEXT_INSTANCE);
     }
 
-    void SendConsoleMessage(const std::string& message);
     void KickPlayer(ServerPlayer* player, const char* reason);
     void LoadNextLevel(const char* level, const char* mode, const char* startPoint = "", const char* initialSubLevel = "",
         bool updateServerBrowser = true);
     void BroadcastMessage(const std::string& message, const std::string& username = "ADMIN", ChatChannel channel = ChatChannel_All);
-    void SendChatMessage(ServerPlayer* player, const std::string& message);
 
     void SetDedicatedCreationInfo(const ServerCreationInfo& info);
 
@@ -123,8 +113,6 @@ public:
     ISocket* m_natClient;
     ServerPlayerManager* m_playerManager;
     PersistenceManager* m_persistenceManager;
-    ServerSquadManager* m_squadManager;
-    Mutex<ChatFilter> m_chatFilter;
     EventManager* m_eventManager;
     SocketSpawnInfo m_socketSpawnInfo;
     MapRotation m_mapRotation;

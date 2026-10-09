@@ -10,6 +10,7 @@ class MaximaGameInstance {
     required this.isDedicated,
     required this.clientService,
     this.mods = const [],
+    this.loadedModPaths = const [],
     this.voipSettings,
     this.lanOnly = false,
   }) {
@@ -21,6 +22,7 @@ class MaximaGameInstance {
   final bool lanOnly;
   ClientGRPCService clientService;
   List<FrostyMod> mods;
+  final List<String> loadedModPaths;
   VoipSettings? voipSettings;
 
   late StreamController<String> _eventStreamController;
@@ -54,6 +56,7 @@ class MaximaGameInstance {
       lanOnly: lanOnly,
       clientService: clientService ?? this.clientService,
       mods: mods ?? this.mods,
+      loadedModPaths: loadedModPaths,
       voipSettings: voipSettings ?? this.voipSettings,
     );
   }

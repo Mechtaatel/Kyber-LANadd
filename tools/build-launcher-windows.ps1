@@ -9,6 +9,7 @@ param(
     [string]$ModuleDirectory = 'D:\Program Files (x86)\KYBER Launcher LAN\lan-module',
     [string]$RuntimeDirectory = 'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Redist\MSVC\14.44.35112\x64\Microsoft.VC143.CRT',
     [string]$InstallerCompiler = 'D:\Program Files (x86)\Inno Setup 6\ISCC.exe',
+    [ValidateRange(1, 16)][int]$BuildJobs = 4,
     [switch]$SkipLauncherBuild
 )
 $ErrorActionPreference = 'Stop'
@@ -37,7 +38,7 @@ if ($mapping) {
     $madeMapping = $true
 }
 $previousEnvironment = @{}
-foreach ($key in @('PUB_CACHE', 'CARGO_HOME', 'RUSTUP_HOME', 'TEMP', 'TMP', 'PROTOC', 'PATH')) {
+foreach ($key in @('PUB_CACHE', 'CARGO_HOME', 'RUSTUP_HOME', 'TEMP', 'TMP', 'PROTOC', 'PATH', 'CMAKE_BUILD_PARALLEL_LEVEL')) {
     $previousEnvironment[$key] = [Environment]::GetEnvironmentVariable($key, 'Process')
 }
 try {
@@ -47,6 +48,7 @@ try {
     $env:TEMP = Join-Path $ToolsRoot 'build-temp'
     $env:TMP = $env:TEMP
     $env:PROTOC = Join-Path $ToolsRoot 'protoc/bin/protoc.exe'
+    $env:CMAKE_BUILD_PARALLEL_LEVEL = "$BuildJobs"
     $env:PATH = ((Join-Path $CargoHome 'bin'), (Join-Path $ToolsRoot 'flutter/bin'),
         (Join-Path $ToolsRoot 'protoc/bin'), $previousEnvironment['PATH']) -join [IO.Path]::PathSeparator
     New-Item -ItemType Directory -Force -Path $env:TEMP | Out-Null

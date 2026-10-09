@@ -5,9 +5,8 @@
 #include <Core/Memory.h>
 #include <Base/Log.h>
 
-#include <grpcpp/support/async_unary_call.h>
-#include <grpcpp/support/status.h>
-#include <grpcpp/client_context.h>
+#include <grpcpp/grpcpp.h>
+
 
 namespace Kyber
 {
@@ -53,8 +52,6 @@ public:
 class AsyncRPCManager
 {
 public:
-    // This function is designed to asynchronously execute grpc requests and process the response via a provided callback. 
-    // Note: The callback is executed on the game's server thread.
     template<typename Request, typename Response, typename Stub>
     void StartCall(Stub* stub,
         std::unique_ptr<grpc::ClientAsyncResponseReader<Response>> (Stub::*prepareAsyncMethod)(
@@ -62,7 +59,8 @@ public:
         const Request& request, typename AsyncClientCall<Request, Response>::Callback callback,
         const std::map<std::string, std::string>& headers = {})
     {
-        AsyncClientCall<Request, Response>* call = new (FB_GLOBAL_ARENA) AsyncClientCall<Request, Response>;
+        void* callPtr = FB_GLOBAL_ARENA->alloc(sizeof(AsyncClientCall<Request, Response>));
+        AsyncClientCall<Request, Response>* call = new (callPtr) AsyncClientCall<Request, Response>;
         call->m_callback = std::move(callback);
 
         for (const auto& [key, value] : headers)

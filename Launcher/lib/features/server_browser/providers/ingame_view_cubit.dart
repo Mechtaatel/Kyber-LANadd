@@ -19,52 +19,78 @@ class IngameViewCubit extends Cubit<IngameViewState> {
   Timer? _keepAliveTimer;
 
   WebSocketChannel? _channel;
+  StreamSubscription<dynamic>? _subscription;
+  String? _loadingServerId;
+  int _loadGeneration = 0;
 
   @override
-  Future<void> close() {
+  Future<void> close() async {
+    await _subscription?.cancel();
+    _subscription = null;
     unloadServer();
     return super.close();
   }
 
   void unloadServer() {
     _logger.info('Unloading server');
-
-    _channel?.sink.close();
+    _loadGeneration++;
+    _loadingServerId = null;
+    final channel = _channel;
+    _channel = null;
+    final subscription = _subscription;
+    _subscription = null;
+    if (subscription != null) unawaited(subscription.cancel());
+    if (channel != null) unawaited(_closeChannel(channel));
     _keepAliveTimer?.cancel();
+    _keepAliveTimer = null;
+    if (!isClosed) emit(const IngameViewState());
+  }
 
-    emit(const IngameViewState());
-
-    if (isClosed) {
-      return;
+  Future<void> _closeChannel(WebSocketChannel channel) async {
+    try {
+      await channel.sink.close();
+    } on Object catch (error) {
+      _logger.fine('Server event channel already closed', error);
     }
   }
 
   Future<void> loadServer(Server server) async {
-    emit(IngameViewState(id: server.id, server: server));
+    if (isClosed) return;
     await selectServer(serverId: server.id);
   }
 
   Future<void> selectServer({String? serverId}) async {
-    if (state.server == null && serverId == null) {
+    final id = serverId ?? state.id;
+    if (isClosed || id == null) {
       return;
     }
+    if (_loadingServerId == id || (_channel != null && state.id == id)) return;
 
-    await _channel?.sink.close();
+    final generation = ++_loadGeneration;
+    _loadingServerId = id;
+    final previous = _channel;
+    _channel = null;
+    final previousSubscription = _subscription;
+    _subscription = null;
     _keepAliveTimer?.cancel();
+    _keepAliveTimer = null;
 
     try {
-      final id = serverId ?? state.id;
+      await previousSubscription?.cancel();
+      if (previous != null) await _closeChannel(previous);
+      if (isClosed || generation != _loadGeneration) return;
       _logger.info('Loading server $id');
       emit(IngameViewState(id: id));
       final service = sl.get<KyberGRPCService>();
       final server = await service.serverBrowserClient.getServer(
         ServerRequest(id: id),
       );
+      if (isClosed || generation != _loadGeneration) return;
       emit(state.copyWith(id: id, server: server));
 
       _logger.info('Subscribing to server events');
 
-      _channel = IOWebSocketChannel.connect(
+      final channel = IOWebSocketChannel.connect(
         'wss://api.${Preferences.admin.apiEnv}.kyber.gg/ws/client/${server.id}',
         headers: {
           'Authorization': service.token,
@@ -72,10 +98,16 @@ class IngameViewCubit extends Cubit<IngameViewState> {
         connectTimeout: const Duration(seconds: 10),
       );
 
-      await _channel?.ready;
+      _channel = channel;
+      await channel.ready;
+      if (isClosed || generation != _loadGeneration) {
+        await _closeChannel(channel);
+        return;
+      }
 
-      _channel?.stream.listen(
+      _subscription = channel.stream.listen(
         (event) {
+          if (isClosed || !identical(_channel, channel)) return;
           try {
             final data = ServerManagementAPIEvent.fromBuffer(
               event as List<int>,
@@ -94,10 +126,12 @@ class IngameViewCubit extends Cubit<IngameViewState> {
           }
         },
         onDone: () {
+          if (!identical(_channel, channel)) return;
           _logger.info('Stream done');
           unloadServer();
         },
         onError: (dynamic e, StackTrace s) {
+          if (!identical(_channel, channel)) return;
           NotificationService.showNotification(
             title: 'Server error',
             message: 'An error occurred while communicating with the server',
@@ -109,11 +143,20 @@ class IngameViewCubit extends Cubit<IngameViewState> {
 
       _keepAliveTimer = Timer.periodic(
         const Duration(seconds: 10),
-        (_) async => _channel?.sink.add(''),
+        (_) {
+          if (isClosed || !identical(_channel, channel)) return;
+          try {
+            channel.sink.add('');
+          } on Object catch (error) {
+            _logger.warning('Server event channel closed', error);
+            unloadServer();
+          }
+        },
       );
 
       await Future<void>.delayed(const Duration(seconds: 3));
     } on WebSocketException catch (e, s) {
+      if (isClosed || generation != _loadGeneration) return;
       var error = 'Failed to connect to websocket';
       switch (e.httpStatusCode ?? 0) {
         case 401:
@@ -126,6 +169,7 @@ class IngameViewCubit extends Cubit<IngameViewState> {
       NotificationService.error(message: error);
       unloadServer();
     } on GrpcError catch (e, s) {
+      if (isClosed || generation != _loadGeneration) return;
       _logger.severe('Error loading server:', e, s);
       NotificationService.showNotification(
         title: 'Server error',
@@ -136,6 +180,7 @@ class IngameViewCubit extends Cubit<IngameViewState> {
       );
       unloadServer();
     } on SocketException catch (e, s) {
+      if (isClosed || generation != _loadGeneration) return;
       _logger.severe('Socket error:', e, s);
       NotificationService.showNotification(
         title: 'Server error',
@@ -144,6 +189,7 @@ class IngameViewCubit extends Cubit<IngameViewState> {
       );
       unloadServer();
     } catch (e, s) {
+      if (isClosed || generation != _loadGeneration) return;
       _logger.severe('Error loading server:', e, s);
       NotificationService.showNotification(
         title: 'Server error',
@@ -151,6 +197,8 @@ class IngameViewCubit extends Cubit<IngameViewState> {
         severity: InfoBarSeverity.error,
       );
       unloadServer();
+    } finally {
+      if (generation == _loadGeneration) _loadingServerId = null;
     }
   }
 }

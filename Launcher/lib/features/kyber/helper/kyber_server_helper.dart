@@ -9,6 +9,7 @@ import 'package:kyber_launcher/core/services/app_settings.dart';
 import 'package:kyber_launcher/core/services/notification_service.dart';
 import 'package:kyber_launcher/features/kyber/providers/kyber_api_status_cubit.dart';
 import 'package:kyber_launcher/features/kyber/providers/kyber_proxy_cubit.dart';
+import 'package:kyber_launcher/features/kyber/helper/server_mod_order.dart';
 import 'package:kyber_launcher/features/maxima/dialogs/maxima_start_game_dialog.dart';
 import 'package:kyber_launcher/features/maxima/models/maxima_game_instance.dart';
 import 'package:kyber_launcher/features/mod_collections/extensions/mod_collection_extension.dart';
@@ -44,7 +45,8 @@ class KyberServerHelper {
       );
       return;
     }
-    final localMods = sl.get<ModService>().mods;
+    final modService = sl.get<ModService>();
+    final localMods = [...modService.mods, ...modService.hiddenMods];
     final mods = server.mods.map((e) {
       final matches = localMods
           .where(
@@ -77,16 +79,50 @@ class KyberServerHelper {
       }
     }
 
+    // Keep the host's required mod order even when the chosen collection
+    // already includes gameplay mods. Expand collections before deduplicating
+    // so an explicit .fbmod and the same file inside a collection load once.
+    final orderedMods = mergeServerModOrder(
+      collectionMods,
+      selectedCollection
+              ?.getLocalMods(expandCollections: true)
+              .whereType<FrostyMod>()
+              .where((mod) => !mod.isCollection)
+              .map((mod) => mod.toCollectionMod()) ??
+          const [],
+    );
+    _logger.info(
+      'Required server mods in host order: '
+      '${server.mods.map((mod) => '${mod.name} (${mod.version})').join(', ')}',
+    );
+    _logger.fine(
+      'Resolved mod load order: '
+      '${orderedMods.map((mod) => mod.filename ?? mod.name).join(', ')}',
+    );
     final tmpCollection = ModCollectionMetaData(
       title: server.name,
-      mods: [
-        if (selectedCollection == null ||
-            !selectedCollection.containsGameplayMods())
-          ...collectionMods,
-        if (selectedCollection != null) ...selectedCollection.mods,
-      ],
+      mods: orderedMods,
       localId: server.id,
     );
+
+    if (server.isLan && sl.isRegistered<MaximaGameInstance>()) {
+      final instance = sl.get<MaximaGameInstance>();
+      final requiredPaths = mergeServerModOrder(
+        collectionMods,
+        const [],
+      ).map((mod) => mod.filename).whereType<String>();
+      if (!hasRequiredServerModOrder(instance.loadedModPaths, requiredPaths)) {
+        _logger.warning(
+          'Running game has a different required LAN mod set or load order. '
+          'A join request cannot reload mods in an existing game process.',
+        );
+        NotificationService.error(
+          message:
+              'Restart Battlefront II to load this LAN server\'s required mods.',
+        );
+        return;
+      }
+    }
 
     var serverIp = server.ip;
     final currentIp = server.isLan

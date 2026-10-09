@@ -11,6 +11,7 @@ import 'package:kyber_launcher/core/config/colors.dart';
 import 'package:kyber_launcher/features/mod_browser/widgets/mod_details/mod_images.dart';
 import 'package:kyber_launcher/features/mods/helper/frosty_mod_extension.dart';
 import 'package:kyber_launcher/features/mods/services/mod_service.dart';
+import 'package:kyber_launcher/features/mods/widgets/mod_description_style.dart';
 import 'package:kyber_launcher/gen/fonts.gen.dart';
 import 'package:kyber_launcher/shared/ui/buttons/custom_icon_button.dart';
 import 'package:kyber_launcher/shared/ui/cards/kyber_container.dart';
@@ -197,6 +198,12 @@ class _ModInfoBoxState extends State<ModInfoBox> {
 
   @override
   Widget build(BuildContext context) {
+    final markdownStyle = modDescriptionStyle(
+      textColor: kWhiteColor,
+      linkColor: kActiveColor,
+      blockBackgroundColor: decoColor,
+    );
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: BackgroundBlur(
@@ -323,12 +330,7 @@ class _ModInfoBoxState extends State<ModInfoBox> {
                                         href != null
                                         ? launchUrlString(href)
                                         : null,
-                                    styleSheet: MarkdownStyleSheet(
-                                      a: TextStyle(
-                                        color: kActiveColor,
-                                        decoration: TextDecoration.underline,
-                                      ),
-                                    ),
+                                    styleSheet: markdownStyle,
                                   ),
                                 ),
                                 const CardSection(),

@@ -3,7 +3,6 @@
 #include <Script/LuaUtilFunctions.h>
 #include <Script/LuaDataContainer.h>
 #include <SDK/Funcs.h>
-#include <SDK/FB/Core.h>
 
 #include <Core/Program.h>
 
@@ -11,10 +10,12 @@ namespace Kyber::Script
 {
 static int GetClientCameraTransformFunc(lua_State* L)
 {
+    const TypeInfo* type = g_program->m_entityManager->GetNativeType("LinearTransform");
+
     LinearTransform* transform = (LinearTransform*)lua_newuserdata(L, sizeof(LinearTransform));
     memcpy(transform, &GameRenderer::Get()->renderView->transform, sizeof(LinearTransform));
 
-    LuaValueTypeData data = { typeInfo_LinearTransform, transform };
+    LuaValueTypeData data = { type, transform };
     LuaUtils::Push(L, data);
 
     return 1;
@@ -23,7 +24,7 @@ static int GetClientCameraTransformFunc(lua_State* L)
 static int GetActiveCameraTransformFunc(lua_State* L)
 {
     LuaValueTypeData* value = LuaDataContainer::GetValueType(L, 1);
-    if (value->type != typeInfo_LinearTransform)
+    if (strcmp(value->type->getName(), "LinearTransform") != 0)
     {
         luaL_error(L, "Expected LinearTransform, got %s", value->type->getName());
         return 0;
@@ -56,8 +57,6 @@ void RegisterUtilTable(lua_State* L)
 {
     luaL_Reg funcs[] = { { "GetClientCameraTransform", GetClientCameraTransformFunc },
         { "GetActiveCameraTransform", GetActiveCameraTransformFunc }, { NULL, NULL } };
-    KB_LUA_NEW_GLOBAL_LIB(L, "Utils", funcs);
+    LuaUtils::RegisterFunctionTable(L, "Utils", funcs);
 }
-
-KB_REGISTER_LUA_CONTENT(RegisterUtilTable);
 } // namespace Kyber::Script
