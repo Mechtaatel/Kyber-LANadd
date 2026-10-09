@@ -25,20 +25,20 @@ class WindowsUtils {
             .toNativeUtf16();
     final info = calloc<SHELLEXECUTEINFO>();
     final comResult = CoInitializeEx(
-      nullptr,
       COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE,
     );
     try {
       info.ref
         ..cbSize = sizeOf<SHELLEXECUTEINFO>()
         ..fMask = _seeMaskNoAsync
-        ..lpVerb = verb
-        ..lpFile = file
-        ..lpParameters = arguments
-        ..lpDirectory = directory
+        ..lpVerb = PWSTR(verb)
+        ..lpFile = PWSTR(file)
+        ..lpParameters = PWSTR(arguments)
+        ..lpDirectory = PWSTR(directory)
         ..nShow = SW_SHOWNORMAL;
-      if (ShellExecuteEx(info) == 0) {
-        final error = GetLastError();
+      final result = ShellExecuteEx(info);
+      if (!result.value) {
+        final error = result.error;
         throw StateError(
           error == ERROR_CANCELLED
               ? 'Installation was cancelled. The launcher is still open.'
@@ -62,43 +62,35 @@ class WindowsUtils {
     }
 
     final ntdll = DynamicLibrary.open('ntdll.dll');
-    final RtlGetVersion = ntdll
+    final rtlGetVersion = ntdll
         .lookupFunction<_RtlGetVersionC, _RtlGetVersionDart>('RtlGetVersion');
-    final osVersionInfo = calloc<OSVERSIONINFO>();
 
-    try {
-      osVersionInfo.ref.dwOSVersionInfoSize = sizeOf<OSVERSIONINFO>();
-      final result = RtlGetVersion(osVersionInfo);
+    return using((arena) {
+      final info = arena<OSVERSIONINFO>()
+        ..ref.dwOSVersionInfoSize = sizeOf<OSVERSIONINFO>();
 
-      if (result == 0) {
-        final major = osVersionInfo.ref.dwMajorVersion;
-        final minor = osVersionInfo.ref.dwMinorVersion;
-
-        if (major == 6 && minor == 1) {
-          return true;
-        }
+      if (rtlGetVersion(info) != 0) {
+        return false;
       }
 
+      return info.ref.dwMajorVersion == 6 && info.ref.dwMinorVersion == 1;
+    });
+  }
+
+  static bool _isDllPresent(String dllName) => using((arena) {
+    final result = LoadLibraryEx(
+      arena.pcwstr(dllName),
+      LOAD_LIBRARY_SEARCH_SYSTEM32,
+    );
+
+    if (result.value.isNull) {
       return false;
-    } finally {
-      calloc.free(osVersionInfo);
-      ntdll.close();
     }
-  }
 
-  static bool _isDllPresent(String dllName) {
-    final ptr = dllName.toNativeUtf16();
-    final hModule = LoadLibraryEx(ptr, 0, LOAD_LIBRARY_SEARCH_SYSTEM32);
-    calloc.free(ptr);
+    FreeLibrary(result.value);
+    return true;
+  });
 
-    if (hModule != NULL) {
-      FreeLibrary(hModule);
-      return true;
-    }
-    return false;
-  }
-
-  static bool get isVcRuntimeInstalled {
-    return _isDllPresent('vcruntime140.dll') || _isDllPresent('msvcp140.dll');
-  }
+  static bool get isVcRuntimeInstalled =>
+      _isDllPresent('vcruntime140.dll') || _isDllPresent('msvcp140.dll');
 }

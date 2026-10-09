@@ -11,18 +11,12 @@ import 'package:flutter_js/flutter_js.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
     show ExternalLibrary;
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:form_builder_validators/localization/l10n.dart';
 import 'package:grpc/grpc.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:kyber_collection/kyber_collection.dart';
-import 'package:kyber_launcher/core/config/colors.dart';
-import 'package:kyber_launcher/core/i18n/app_locale.dart';
-import 'package:kyber_launcher/core/routing/app_router.dart';
-import 'package:kyber_launcher/core/services/module_version_service.dart';
-import 'package:kyber_launcher/core/services/native_dialog.dart';
-import 'package:kyber_launcher/core/services/storage_helper.dart';
-import 'package:kyber_launcher/core/services/window_helper.dart';
-import 'package:kyber_launcher/core/utils/custom_logger.dart';
+import 'package:kyber_launcher/core/core.dart';
 import 'package:kyber_launcher/features/download_manager/providers/download_manager_cubit.dart';
 import 'package:kyber_launcher/features/events/providers/event_cubic.dart';
 import 'package:kyber_launcher/features/kyber/providers/kyber_api_status_cubit.dart';
@@ -41,6 +35,7 @@ import 'package:kyber_launcher/features/server_browser/providers/server_browser_
 import 'package:kyber_launcher/features/server_browser/providers/server_list_cubit.dart';
 import 'package:kyber_launcher/features/server_moderation/providers/moderation_cubit.dart';
 import 'package:kyber_launcher/features/server_moderation/providers/moderation_servers_cubit.dart';
+import 'package:kyber_launcher/features/session/providers/session_cubit.dart';
 import 'package:kyber_launcher/features/stats/providers/stats_cubit.dart';
 import 'package:kyber_launcher/features/tutorial/providers/tutorial_cubit.dart';
 import 'package:kyber_launcher/gen/assets.gen.dart';
@@ -66,6 +61,9 @@ const kMaximaDebugLevel = 'debug';
 JavascriptRuntime? flutterJs;
 WebViewEnvironment? webViewEnvironment;
 String? bbCodeJs;
+
+const kProdEnv = 'prod';
+const kDevPlaytestEnv = 'devplaytest';
 
 Box<dynamic> box = Hive.box('data');
 Box<List> mapRotationBox = Hive.box('mapRotation');
@@ -196,7 +194,7 @@ void main() async {
       Logger('bootstrap').info('Loading Certificates');
       await loadCerts();
       await initSentry(info.version);
-      if (defaultTargetPlatform == TargetPlatform.windows) {
+      if (defaultTargetPlatform == .windows) {
         final availableVersion = await WebViewEnvironment.getAvailableVersion();
         if (availableVersion == null) {
           showWebViewDialog();
@@ -294,13 +292,14 @@ class _AppState extends State<App> {
               lightFactor: 0,
             ),
             activeColor: kActiveColor,
-            brightness: Brightness.dark,
+            brightness: .dark,
             fontFamily: FontFamily.battlefrontUI,
             radioButtonTheme: RadioButtonThemeData(
               foregroundColor: WidgetStateProperty.resolveWith((states) {
                 if (states.contains(WidgetState.hovered)) {
                   return kInactiveColor;
                 }
+
                 return kActiveColor;
               }),
             ),
@@ -312,8 +311,8 @@ class _AppState extends State<App> {
               hoveringTrackBorderColor: kWhiteBackgroundColor,
               hoveringMainAxisMargin: 0,
               crossAxisMargin: 0,
-              padding: EdgeInsets.zero,
-              hoveringPadding: EdgeInsets.zero,
+              padding: .zero,
+              hoveringPadding: .zero,
               hoveringCrossAxisMargin: 0,
               mainAxisMargin: 0,
               backgroundColor: Colors.transparent,
@@ -323,7 +322,7 @@ class _AppState extends State<App> {
             ),
           ),
           backButtonDispatcher: RootBackButtonDispatcher(),
-          themeMode: ThemeMode.dark,
+          themeMode: .dark,
           locale: AppLocale.getLocale(),
           localizationsDelegates: const [
             ...GlobalMaterialLocalizations.delegates,
@@ -331,11 +330,31 @@ class _AppState extends State<App> {
           ],
           supportedLocales: const [Locale('en')],
           debugShowCheckedModeBanner: false,
-          builder: (context, child) {
-            child = WindowController(
+          builder: (context, c) {
+            final currentRoute = router.routeInformationProvider.value.location;
+
+            Widget child = WindowController(
               child: GraphqlProvider(
-                child: child!,
+                child: c ?? Text('No route found for $currentRoute'),
               ),
+            );
+
+            if (Preferences.admin.apiEnv == kDevPlaytestEnv) {
+              child = Banner(
+                message: 'NOT FINAL',
+                location: .topEnd,
+                color: Colors.red,
+                textStyle: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: .bold,
+                ),
+                child: child,
+              );
+            }
+
+            child = DefaultSvgTheme(
+              theme: const .new(currentColor: Color(0xFFD9D9D9)),
+              child: child,
             );
 
             return Builder(
@@ -358,6 +377,7 @@ class _AppState extends State<App> {
                       BlocProvider(create: (_) => KyberProxyCubit()),
                       BlocProvider(create: (_) => ModsListCubit()),
                       BlocProvider(create: (_) => StatsCubit()),
+                      BlocProvider(create: (_) => SessionCubit()),
                       BlocProvider(create: (_) => IngameViewCubit()),
                       BlocProvider(create: (_) => DownloadCubit(), lazy: false),
                       BlocProvider(
@@ -366,7 +386,7 @@ class _AppState extends State<App> {
                       ),
                     ],
                     child: KyberBackground(
-                      child: child ?? const SizedBox.shrink(),
+                      child: child,
                     ),
                   ),
                 );
