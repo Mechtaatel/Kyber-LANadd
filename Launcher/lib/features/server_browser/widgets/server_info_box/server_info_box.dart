@@ -112,7 +112,7 @@ class _ServerInfoBoxState extends State<ServerInfoBox> {
   }
 
   void setPreferredRegion(ServerEntry serverEntry) {
-    if (serverEntry is! GroupedServer) {
+    if (serverEntry is! GroupedServer || serverEntry.serverInfo.isLan) {
       return;
     }
 
@@ -192,7 +192,12 @@ class _ServerInfoBoxState extends State<ServerInfoBox> {
 
   @override
   Widget build(BuildContext context) {
-    final proxiesLoading = context.watch<KyberProxyCubit>().state.loading;
+    // Only grouped online servers use proxy pings to choose a region.
+    // Direct LAN connections must remain available while proxies are offline.
+    final proxiesLoading =
+        _group != null &&
+        !serverInfo.isLan &&
+        context.watch<KyberProxyCubit>().state.loading;
     if (!proxiesLoading && !_regionResolved) {
       _regionResolved = true;
       setPreferredRegion(widget.server);

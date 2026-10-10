@@ -41,7 +41,10 @@ class KyberProxyCubit extends Cubit<KyberProxyState> {
   }
 
   Future<void> _loadProxies({List<ProxyInfo>? initialProxies}) async {
-    if (LanMode.enabled) return;
+    if (LanMode.enabled) {
+      emit(state.copyWith(proxies: [], selectedProxy: '', loading: false));
+      return;
+    }
     emit(state.copyWith(loading: true));
     try {
       var proxyList = initialProxies;
