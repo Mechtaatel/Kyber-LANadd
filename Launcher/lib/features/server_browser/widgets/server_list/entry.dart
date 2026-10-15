@@ -202,9 +202,10 @@ class ServerListEntry extends StatelessWidget {
                           if (server case GroupedServer(:final group)) ...[
                             Row(
                               spacing: 6,
-
                               children: [
-                                for (final region in group.regions)
+                                for (final region in group.regions.sortedBy(
+                                  (region) => region.name,
+                                ))
                                   _RegionBadge(region: region.name),
                               ],
                             ),
