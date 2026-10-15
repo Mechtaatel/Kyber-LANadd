@@ -1,6 +1,8 @@
 import 'dart:io';
 
+import 'package:collection/collection.dart';
 import 'package:flutter/services.dart';
+import 'package:grpc/grpc.dart';
 import 'package:kyber/kyber.dart';
 import 'package:kyber_collection/kyber_collection.dart';
 import 'package:kyber_launcher/core/services/lan_add_update_service.dart';
@@ -23,7 +25,7 @@ extension VersionModuleExtension on VersionModule {
     switch (this) {
       case VersionModule.module:
         final x = File(
-          join(FileHelper.getLanModuleDirectory().path, 'VERSION'),
+          join(FileHelper.getOnlineModuleDirectory().path, 'VERSION'),
         );
 
         if (!x.existsSync()) {
@@ -48,7 +50,7 @@ extension VersionModuleExtension on VersionModule {
           'kyber_launcher_${DateTime.now().millisecondsSinceEpoch}',
         );
       case VersionModule.module:
-        return FileHelper.getOfficialModuleDirectory().path;
+        return FileHelper.getOnlineModuleRoot().path;
     }
   }
 
@@ -66,7 +68,7 @@ extension VersionModuleExtension on VersionModule {
       case VersionModule.installer:
         return [];
       case VersionModule.module:
-        final modulePath = FileHelper.getOfficialModuleDirectory().path;
+        final modulePath = FileHelper.getOnlineModuleDirectory().path;
         return [
           '$modulePath/ca_root.pem',
           '$modulePath/vivoxsdk.dll',
@@ -97,8 +99,11 @@ class ModuleVersionService {
       return channel == 'stable' || channel == 'beta';
     }
 
-    // The module is versioned and distributed with the LAN ADD installer.
-    return false;
+    final response = await sl.get<KyberGRPCService>().launcherClient.versions(
+      ServiceVersionsRequest(id: module.name, channel: channel),
+      options: CallOptions(timeout: const Duration(seconds: 20)),
+    );
+    return response.versions.any((version) => version.isLatest);
   }
 
   Future<bool> updateAvailable({
@@ -119,7 +124,12 @@ class ModuleVersionService {
         return false;
       }
     }
-    return !await FileHelper.isLanAddModuleInstalledForOnline();
+    if (LanMode.enabled) return false;
+    final latest = await _latestModule(channel: channel, service: service);
+    return !await OfficialModuleUpdater.complete(
+      FileHelper.getOnlineModuleDirectory(),
+      latest.version.version,
+    );
   }
 
   Future<void> updateVersion({
@@ -134,11 +144,49 @@ class ModuleVersionService {
       return;
     }
 
-    _logger.info('Preparing bundled LAN ADD module (no download)');
-    await FileHelper.installLanAddDllForOnline();
-    _logger.info(
-      'Bundled LAN ADD module ready: ${await module.getCurrentVersion()}',
+    final api = service ?? sl.get<KyberGRPCService>();
+    final latest = await _latestModule(channel: channel, service: api);
+    final download = await api.launcherClient.downloadUrl(
+      ServiceVersionDownloadUrlRequest(
+        id: module.name,
+        channel: latest.channel,
+        version: latest.version.version,
+      ),
+      options: CallOptions(timeout: const Duration(seconds: 20)),
     );
+    _logger.info('Updating official Kyber module to ${latest.version.version}');
+    await OfficialModuleUpdater(root: FileHelper.getOnlineModuleRoot()).install(
+      version: latest.version.version,
+      downloadUrl: Uri.parse(download.url),
+      expectedSize: latest.version.size,
+      onProgress: onProgress,
+    );
+    _logger.info('Official Kyber module ready: ${latest.version.version}');
+  }
+
+  Future<({String channel, ServiceVersion version})> _latestModule({
+    String? channel,
+    KyberGRPCService? service,
+  }) async {
+    final api = service ?? sl.get<KyberGRPCService>();
+    var selected = channel ?? VersionModule.module.releaseChannel;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      final response = await api.launcherClient.versions(
+        ServiceVersionsRequest(
+          id: VersionModule.module.name,
+          channel: selected,
+        ),
+        options: CallOptions(timeout: const Duration(seconds: 20)),
+      );
+      final latest = response.versions.firstWhereOrNull(
+        (entry) => entry.isLatest,
+      );
+      if (latest != null) return (channel: selected, version: latest);
+      if (selected == 'stable') break;
+      selected = 'stable';
+      await VersionModule.module.setReleaseChannel(selected);
+    }
+    throw StateError('No official Kyber module is available on this channel.');
   }
 
   Future<String?> getLatestLauncherVersion([String? releaseChannel]) async {

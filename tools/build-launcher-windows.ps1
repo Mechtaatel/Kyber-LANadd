@@ -7,6 +7,8 @@ param(
     [string]$RustupHome = 'D:\dev\Rust\.rustup',
     [string]$MaximaDirectory = 'D:\Program Files (x86)\KYBER Launcher LAN',
     [string]$ModuleDirectory = 'D:\Program Files (x86)\KYBER Launcher LAN\lan-module',
+    [string]$OfficialModuleDirectory,
+    [string]$UpstreamModuleCommit,
     [string]$RuntimeDirectory = 'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Redist\MSVC\14.44.35112\x64\Microsoft.VC143.CRT',
     [string]$InstallerCompiler = 'D:\Program Files (x86)\Inno Setup 6\ISCC.exe',
     [ValidateRange(1, 16)][int]$BuildJobs = 4,
@@ -64,7 +66,8 @@ try {
     Write-Host 'Packaging the Windows launcher and module'
     & (Join-Path $repo 'tools/package-launcher-windows.ps1') `
         -MaximaDirectory $MaximaDirectory -ModuleDirectory $ModuleDirectory `
-        -RuntimeDirectory $RuntimeDirectory -Name $Name
+        -RuntimeDirectory $RuntimeDirectory -Name $Name `
+        -OfficialModuleDirectory $OfficialModuleDirectory -UpstreamModuleCommit $UpstreamModuleCommit
     $bundle = Join-Path $repo "artifacts/$Name"
     Write-Host "Compiling $setupName.exe"
     & $InstallerCompiler '/Q' "/DBundleSourceDir=$bundle" "/DSetupOutputName=$setupName" `

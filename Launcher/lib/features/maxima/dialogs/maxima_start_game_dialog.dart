@@ -49,6 +49,7 @@ class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
   @override
   void initState() {
     SchedulerBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
       final lanOnly =
           LanMode.enabled ||
           (widget.initializeRequest?.startServer.lanOnly ?? false) ||
@@ -61,6 +62,7 @@ class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
             await ModuleVersionService().updateAvailable(
               module: VersionModule.module,
             );
+        if (!mounted) return;
         if (available) {
           setState(() => updating = true);
 
@@ -85,10 +87,10 @@ class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
           _ => e.toString(),
         };
 
-        Logger.root.severe('Failed to prepare bundled Kyber Module', e, st);
+        Logger.root.severe('Failed to prepare official Kyber Module', e, st);
         await Sentry.captureException(e, stackTrace: st);
         NotificationService.showNotification(
-          message: 'Failed to prepare bundled Kyber Module: $message',
+          message: 'Failed to prepare official Kyber Module: $message',
           severity: InfoBarSeverity.error,
         );
 
@@ -97,6 +99,7 @@ class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
         return;
       }
 
+      if (!mounted) return;
       final req = widget.initializeRequest ?? .new();
       if (!lanOnly && Preferences.general.enabledPreloadMods) {
         setState(() => preloadingMods = true);
@@ -125,6 +128,7 @@ class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
 
             _gameEvents = value.eventStream.listen(
               (e) {
+                if (!mounted) return;
                 setState(() => lastEvent = e);
 
                 if ([

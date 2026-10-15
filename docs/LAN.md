@@ -1,7 +1,8 @@
 # LAN hosting
 
-This fork adds IPv4 LAN discovery and a LAN-only hosting mode. Rebuild **all three
-components** (Kyber.dll, Launcher and CLI) from this branch. Stock Kyber modules
+This fork adds IPv4 LAN discovery and a LAN-only hosting mode. Build Kyber.dll
+once and package the same DLL with the launcher and server bundle. Rebuild Dart
+clients when their code or the launcher/module protocol changes. Stock Kyber modules
 ignore the new `StartServerRequest.lanOnly` field and cannot host this mode.
 Regenerate protobuf bindings as described in BUILDING.md before building Dart.
 
@@ -15,12 +16,15 @@ already be installed. LAN mode skips Kyber module updates and preloaded-mod
 downloads, so it does not replace the locally built module with an upstream one.
 
 Portable fork bundles include a `lan-module` directory next to the launcher/CLI.
-For Windows online play, the launcher installs the bundled fork `Kyber.dll` into
-`%ProgramData%/Kyber/Module` so Cyrillic localization works there too. The first
-stock DLL is saved as `Kyber.dll.lan-add-original` and restored when LAN ADD is
-uninstalled. Missing or empty accompanying files are restored from the local
-bundle; the launcher does not download a separate official module. The fork's
-version is recorded in `LAN-ADD-VERSION`, leaving the upstream `VERSION` intact.
+For Windows online play, the launcher checks the official module release channel
+and downloads updates into `%ProgramData%/Kyber/LAN-Modules/online`. Downloads are
+staged and validated before activation; interrupted transfers keep the last
+working release. This cache is separate from the stock launcher's module folder.
+The bundled Unicode-enabled DLL is used in a separate cache only when
+`ONLINE-COMPATIBILITY.json` matches both the official release ID and the SHA-256
+of both DLLs. Newer official releases use their own DLL until a compatible LAN ADD
+build is available. The launcher never overwrites the stock module or restores
+an obsolete DLL backup when uninstalled.
 Keep the entire LAN bundle with
 Kyber.dll, vivoxsdk.dll, ca_root.pem and VanillaBundleAggregation.kb. Updating the
 fork module requires installing a newer complete fork bundle. Do not place the
@@ -47,8 +51,9 @@ releases whose title starts with `[BROKEN]` or `BROKEN`, and releases containing
 `<!-- lan-add-update: disabled -->` in their notes are excluded from updates.
 
 Under New Server, **LAN ONLY** is available with OFF/ON buttons.
-Leave it disabled for normal public hosting. Both online and LAN-only sessions
-use the fork DLL; LAN-only hosts advertise locally and skip Kyber services.
+Leave it disabled for normal public hosting. Online sessions use the current
+official module or its verified compatible Unicode-enabled DLL; LAN-only hosts
+use the bundled fork DLL, advertise locally and skip Kyber services.
 LAN-only hosts do not register with Kyber or connect to Kyber proxies. Players
 connect directly to the host. LAN-only sessions do not use Kyber join tokens,
 global bans, verified Kyber identities, public statistics or Vivox voice chat.

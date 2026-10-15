@@ -125,11 +125,17 @@ class KyberServerHelper {
     }
 
     var serverIp = server.ip;
-    final currentIp = server.isLan
-        ? null
-        : await KyberNetworkHelper.getCurrentIpAddress();
-    if (serverIp == currentIp) {
-      serverIp = '127.0.0.1';
+    if (!server.isLan && !server.requiresProxy) {
+      try {
+        final currentIp = await KyberNetworkHelper.getCurrentIpAddress()
+            .timeout(const Duration(seconds: 3));
+        if (serverIp == currentIp) serverIp = '127.0.0.1';
+      } on Object catch (error) {
+        _logger.warning(
+          'Public IP lookup unavailable; using the server address',
+          error,
+        );
+      }
     }
 
     var proxyIp = '';

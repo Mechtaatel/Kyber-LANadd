@@ -133,39 +133,28 @@ class ServerGroup {
     return servers.map((e) => e.serverRegion).nonNulls.toSet();
   }
 
-  ServerRegion getPreferredRegion() {
+  ServerRegion? getPreferredRegion() {
     final pinnedProxies = servers
-        .where((e) => e.meta.containsKey('pinned_proxy_id'))
-        .map((e) => e.meta['pinned_proxy_id']!)
+        .map((e) => e.meta['pinned_proxy_id'])
+        .nonNulls
         .toSet();
 
-    final proxies = navigatorKey.currentContext!
-        .read<KyberProxyCubit>()
-        .state
-        .proxies;
+    final proxies =
+        navigatorKey.currentContext?.read<KyberProxyCubit>().state.proxies ??
+        const [];
 
     // TODO: use server region instead
-    if (pinnedProxies.isEmpty) {
-      throw Exception('No pinned proxies found for server group $groupName');
+    final region = proxies
+        .firstWhereOrNull((e) => pinnedProxies.contains(e.proxy.id))
+        ?.proxy
+        .serverRegion;
+
+    final available = regions;
+    if (region != null && available.contains(region)) {
+      return region;
     }
 
-    final KyberProxy? proxy;
-    if (pinnedProxies.length == 1) {
-      final proxyId = pinnedProxies.first;
-      proxy = proxies.firstWhereOrNull((e) => e.proxy.id == proxyId);
-      if (proxy == null) {
-        throw Exception('Unknown pinned proxy id: $proxyId');
-      }
-    } else {
-      proxy = proxies.firstWhere((e) => pinnedProxies.contains(e.proxy.id));
-    }
-
-    final region = proxy.proxy.serverRegion;
-    if (region == null) {
-      throw Exception('Unknown region for proxy ${proxy.proxy.id}');
-    }
-
-    return region;
+    return getPreferredServer().serverRegion ?? available.firstOrNull;
   }
 
   List<Server> getForRegion(ServerRegion region) {

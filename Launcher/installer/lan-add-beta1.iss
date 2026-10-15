@@ -78,22 +78,3 @@ begin
   Result := ExpandConstant('{param:LANADDUPDATE|0}') = '1';
 end;
 
-procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
-var
-  ModuleDll: String;
-  OriginalDll: String;
-begin
-  if CurUninstallStep = usUninstall then
-  begin
-    ModuleDll := ExpandConstant('{commonappdata}\Kyber\Module\Kyber.dll');
-    OriginalDll := ModuleDll + '.lan-add-original';
-    if FileExists(OriginalDll) then
-    begin
-      if CopyFile(OriginalDll, ModuleDll, True) then
-        DeleteFile(OriginalDll)
-      else
-        MsgBox('Could not restore the original Kyber.dll. The backup remains at:' + #13#10 + OriginalDll,
-          mbError, MB_OK);
-    end;
-  end;
-end;

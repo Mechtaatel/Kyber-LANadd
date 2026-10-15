@@ -152,13 +152,9 @@ class MaximaHelper {
         initializeRequest != null &&
             initializeRequest.hasJoinServer() &&
             !initializeRequest.joinServer.hasId();
-    if (!lanOnly) {
-      final installedDll = await FileHelper.installLanAddDllForOnline();
-      _logger.info(
-        'Using LAN ADD Kyber.dll for online play: ${installedDll.path}',
-      );
-    }
-    var moduleDirectory = FileHelper.getGameModuleDirectory(lanOnly: lanOnly);
+    var moduleDirectory = lanOnly
+        ? FileHelper.getGameModuleDirectory(lanOnly: true)
+        : await FileHelper.prepareOnlineModule();
     final missingFiles = <String>[];
     for (final name in [
       'Kyber.dll',
@@ -236,6 +232,18 @@ class MaximaHelper {
       ProcessEnv.delete('KYBER_LOG_LEVEL');
     }
 
+    if (Preferences.general.disableForceDX11) {
+      ProcessEnv.set('KYBER_EXPERIMENTAL_DISABLE_FORCE_DX11', '1');
+    } else {
+      ProcessEnv.delete('KYBER_EXPERIMENTAL_DISABLE_FORCE_DX11');
+    }
+
+    if (Preferences.general.disableForceNoHDR) {
+      ProcessEnv.set('KYBER_EXPERIMENTAL_DISABLE_FORCE_NOHDR', '1');
+    } else {
+      ProcessEnv.delete('KYBER_EXPERIMENTAL_DISABLE_FORCE_NOHDR');
+    }
+
     final gameClient = ClientGRPCService('127.0.0.1', interfacePort);
     final gamePID = await maxima.startGame(
       gameSlug: gameSlug ?? 'star-wars-battlefront-2',
@@ -272,7 +280,13 @@ class MaximaHelper {
       );
       await maxima
           .lsxGetEventStream(pid: gamePID, isStartup: true)
-          .firstWhere((e) => e == 'RequestLicense');
+          .firstWhere(
+            (e) => e == 'RequestLicense',
+            orElse: () => throw StateError(
+              'Battlefront II closed before requesting its EA license. '
+              'Kyber.dll has not been injected. Check EA login and the Maxima log.',
+            ),
+          );
       await maxima.injectKyber(
         pid: gamePID,
         path: p.join(moduleDirectory.path, 'Kyber.dll'),

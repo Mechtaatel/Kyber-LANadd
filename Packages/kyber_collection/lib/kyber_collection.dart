@@ -8,3 +8,4 @@ export 'src/mod_collection.dart';
 export 'src/utils/byte_reader.dart';
 export 'src/utils/byte_writer.dart';
 export 'src/utils/file_helper.dart';
+export 'src/utils/official_module_updater.dart';

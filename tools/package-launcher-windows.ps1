@@ -1,6 +1,8 @@
 param(
     [Parameter(Mandatory=$true)][string]$MaximaDirectory,
     [Parameter(Mandatory=$true)][string]$ModuleDirectory,
+    [string]$OfficialModuleDirectory,
+    [string]$UpstreamModuleCommit,
     [string]$RuntimeDirectory = 'C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT',
     [string]$Name = 'kyber-launcher-lan-add-20260928-complete'
 )
@@ -74,6 +76,20 @@ Copy-Item -LiteralPath (Join-Path $repo 'docs/LAN.md') -Destination $destination
 # Release directories can retain BUILD-INFO from an earlier local build.
 # Record the actual packaged launcher and DLL rather than copying that claim.
 $packagedDll = Join-Path $module.FullName 'Kyber.dll'
+if ($OfficialModuleDirectory) {
+    if ($UpstreamModuleCommit -notmatch '^[0-9a-f]{40}$') {
+        throw 'The compatible online DLL requires the full upstream source commit.'
+    }
+    $onlineCompatibility = [ordered]@{
+        upstreamCommit = $UpstreamModuleCommit
+        officialVersion = [IO.File]::ReadAllText((Join-Path $OfficialModuleDirectory 'VERSION')).Trim()
+        officialDllSha256 = (Get-FileHash -LiteralPath (Join-Path $OfficialModuleDirectory 'Kyber.dll')).Hash.ToLowerInvariant()
+        bundledDllSha256 = (Get-FileHash -LiteralPath $packagedDll).Hash.ToLowerInvariant()
+    }
+    [IO.File]::WriteAllText((Join-Path $module.FullName 'ONLINE-COMPATIBILITY.json'), ($onlineCompatibility | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+} elseif (Test-Path -LiteralPath (Join-Path $ModuleDirectory 'ONLINE-COMPATIBILITY.json')) {
+    Copy-Item -LiteralPath (Join-Path $ModuleDirectory 'ONLINE-COMPATIBILITY.json') -Destination $module.FullName
+}
 $moduleBytes = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($packagedDll))
 $engineVersions = @([regex]::Matches($moduleBytes, '2\.0\.0-beta\d+') | ForEach-Object {
     $_.Value

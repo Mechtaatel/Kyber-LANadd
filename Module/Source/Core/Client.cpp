@@ -22,6 +22,8 @@ Client::Client()
     , m_voipManager(nullptr)
     , m_socketManager(nullptr)
     , m_eventManager(new EventManager())
+    , m_squadManager(new ClientSquadManager(m_eventManager))
+    , m_gameplayManager(new ClientPlayerGameplayManager(m_eventManager))
     , m_clientState(ClientState_None)
 {
     m_eventManager->RegisterListener<MainLoopInitJoinServerEvent>(this);
@@ -326,7 +328,7 @@ void** OnlineManagerConnectHk(void* inst, const SocketAddr& address)
     StringBuilder builder;
     char buf[256];
 
-    StringBuilder_ctor(&builder, buf, 256);
+    builder.Ctor(buf, sizeof(buf));
     networkAddressToString(&address, builder);
 
     KYBER_LOG(Info, "[Client] Connecting to server (2) " << buf);
@@ -439,6 +441,8 @@ void Client::InitializeHooks()
     {
         HookManager::CreateHook(hook.offset, hook.hook);
     }
+    
+    m_squadManager->InitializeHooks();
 
     Hook::ApplyQueuedActions();
     KYBER_LOG(Debug, "[Client] Initialized Client Hooks");
