@@ -34,6 +34,27 @@ void LauncherInterface::Initialize() const
     }
 
     KYBER_LOG(Info, "[RPC] Initializing from launcher");
+    // Publish mod metadata before installing game hooks. If the game reaches
+    // UpdateConfig during Initialize(), the loader must not see an empty list.
+    if (request.has_moddata())
+    {
+        ModData modData{};
+        modData.basePath = request.moddata().basepath();
+        for (const auto& path : request.moddata().modpaths())
+        {
+            modData.modPaths.push_back(path);
+        }
+        for (const auto& mod : request.moddata().mods())
+        {
+            modData.serverMods.push_back(mod);
+        }
+        for (const auto& mod : request.moddata().explodedmods())
+        {
+            modData.explodedMods.push_back(mod);
+        }
+        g_program->m_modData = std::move(modData);
+    }
+    KYBER_LOG(Info, "[RPC] Requested mod paths: " << g_program->m_modData.modPaths.size());
     g_program->Initialize();
 
     switch (request.startState_case())
@@ -95,35 +116,9 @@ void LauncherInterface::Initialize() const
         break;
     }
 
-    if (request.has_moddata())
-    {
-        ModData modData{};
-        modData.basePath = request.moddata().basepath();
-
-        modData.modPaths.reserve(request.moddata().modpaths_size());
-        for (const auto& modPath : request.moddata().modpaths())
-        {
-            modData.modPaths.push_back(modPath);
-        }
-
-        modData.serverMods.reserve(request.moddata().mods_size());
-        for (const auto& mod : request.moddata().mods())
-        {
-            modData.serverMods.push_back(mod);
-        }
-
-        modData.explodedMods.reserve(request.moddata().explodedmods_size());
-        for (const auto& mod : request.moddata().explodedmods())
-        {
-            modData.explodedMods.push_back(mod);
-        }
-
-        g_program->m_modData = modData;
-    }
-
     std::unique_lock<std::mutex> lock(g_program->m_startupMutex);
     g_program->m_startupInitialized = true;
-    g_program->m_startupCondition.notify_one();
+    g_program->m_startupCondition.notify_all();
 }
 
 std::optional<std::tuple<std::string, std::string>> LauncherInterface::GetCustomLevelData(std::string mapId, std::string modeId) const

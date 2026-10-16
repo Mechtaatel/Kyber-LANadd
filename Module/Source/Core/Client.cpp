@@ -52,7 +52,7 @@ void Client::HandleClientServerJoin(NetworkCreatePlayerMessage* message)
     message->isSpectator = m_spectator;
 
     KYBER_LOG(Info, "[Client] Joining game with authentication");
-    KYBER_LOG(Debug, "[Client] Joining game as '" << message->playerName << "'");
+    KYBER_LOG(Debug, "[Client] Join authentication attached");
 
     AttemptJoinVoip();
 }
@@ -207,6 +207,8 @@ __int64 ClientStateChangeHk(__int64 inst, ClientState currentClientState, Client
         else if (!g_program->m_client->m_joining && !firstStartup)
         {
             Settings<ClientSettings>("Client")->ServerIp = const_cast<char*>(StringUtils::CopyWithArena(""));
+            // Do not reuse the remote server's proxy route for the frontend.
+            server->m_socketSpawnInfo = SocketSpawnInfo();
         }
 
         server->OnClientStartup();

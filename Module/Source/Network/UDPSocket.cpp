@@ -6,6 +6,7 @@
 #include <Core/Program.h>
 #include <Network/SocketManager.h>
 #include <Network/LanAddress.h>
+#include <Network/ProxyRoute.h>
 #include <Utilities/ErrorUtils.h>
 #include <Utilities/PlatformUtils.h>
 #include <Utilities/StringUtils.h>
@@ -19,7 +20,7 @@
 
 namespace Kyber
 {
-static uint8_t s_proxifyBuffer[3072];
+static thread_local uint8_t s_proxifyBuffer[3072];
 
 std::string DirectionToString(ProtocolDirection direction)
 {
@@ -75,33 +76,37 @@ uint8_t* ProxifyBuffer(uint8_t* buffer, int& bufferSize, sockaddr* addr)
 
 bool UDPSocket::Send(uint8_t* buffer, int bufferSize, unsigned int flags)
 {
+    if (buffer == nullptr || bufferSize < 0 || !m_peerAddressIsValid || m_peerAddress.Length() < sizeof(sockaddr_in))
+    {
+        return false;
+    }
+
     sockaddr* addr = (sockaddr*)m_peerAddress.Data();
 
     // KYBER_LOG(Info, "[" << DirectionToString(m_direction) << "] Sending " << bufferSize << " bytes to "
     //                     << inet_ntoa(((sockaddr_in*)addr)->sin_addr) << ":" << ntohs(((sockaddr_in*)addr)->sin_port));
 
-    const char* ip = nullptr;
-    if (m_info.isProxied || (
-        m_direction == ProtocolDirection::Clientbound && 
-            (ip = inet_ntoa(((sockaddr_in*)addr)->sin_addr)) && strstr(ip, "0.1.1.") != nullptr
-                            )
-                        )
+    // isProxied describes the outgoing client connection, not every socket
+    // subsequently used by the local frontend. Server replies use the virtual
+    // peer address instead; a real LAN/loopback peer must stay on UDP.
+    const int proxyIndex = SelectProxySocket(m_direction, m_info.isProxied, ntohl(((sockaddr_in*)addr)->sin_addr.s_addr));
+    if (proxyIndex >= 0)
     {
-        int proxyIndex = 0;
+        if (static_cast<std::size_t>(proxyIndex) >= m_sockets.size())
+        {
+            KYBER_LOG(Error, "Invalid proxy index: " << proxyIndex);
+            return false;
+        }
 
         bool proxify = m_direction == ProtocolDirection::Clientbound;
         if (proxify)
         {
-            buffer = ProxifyBuffer(buffer, bufferSize, addr);
-
-            const char* finalSection = ip + 6;
-            proxyIndex = atoi(finalSection);
-
-            if (proxyIndex < 0 || proxyIndex >= m_sockets.size())
+            if (!ValidProxyPayload(bufferSize, sizeof(s_proxifyBuffer)))
             {
-                KYBER_LOG(Error, "Invalid proxy index: " << proxyIndex);
+                KYBER_LOG(Error, "Proxy payload exceeds packet buffer: " << bufferSize);
                 return false;
             }
+            buffer = ProxifyBuffer(buffer, bufferSize, addr);
         }
 
         bool success = m_sockets[proxyIndex].Send(buffer, bufferSize);
@@ -187,6 +192,11 @@ int UDPSocket::ReceiveFromWhen(uint8_t* buffer, int bufferSize, unsigned int& wh
 
     if (proxyId != -1 && m_direction == ProtocolDirection::Clientbound)
     {
+        if (recvSize < 2 || proxyId < 0 || proxyId > 255)
+        {
+            KYBER_LOG(Warning, "Discarding malformed proxy datagram");
+            return -1;
+        }
         addr.sin_family = AF_INET;
         addr.sin_addr.s_addr = inet_addr(("0.1.1." + std::to_string(proxyId)).c_str());
         addr.sin_port = buffer[0] << 8 | buffer[1];

@@ -123,15 +123,22 @@ void MainInitHk()
 
     std::unique_lock<std::mutex> lock(g_program->m_startupMutex);
     g_program->m_startupCondition.wait(lock, [] { return g_program->m_startupInitialized; });
+    lock.unlock();
 
     KYBER_LOG(Info, "[Engine] Finished initializing");
 
     trampoline();
 }
 
+void FileSuperBundleManagerUpdateConfigHk(FileSuperBundleManager* inst);
+
 void Program::InitializationThread()
 {
     HookManager::CreateHook(HOOK_OFFSET(0x1401898A0), MainInitHk);
+    // Asset configuration can be reached while Sentry/RPC are still starting,
+    // especially when the DLL is first loaded. Gate it immediately, not after
+    // the rest of initialization has already let vanilla assets through.
+    HookManager::CreateHook(OFFSET_FILESUPERBUNDLEMANAGER_UPDATECONFIG, FileSuperBundleManagerUpdateConfigHk);
     Hook::ApplyQueuedActions();
 
     Sentry::Initialize();
@@ -647,6 +654,12 @@ void GameSimulationInitHk(GameSimulation* inst, void* createInfo)
 {
     static const auto trampoline = HookManager::Call(GameSimulationInitHk);
     KYBER_LOG(Info, "[GameSim] Initializing Game Simulation");
+    if (!g_program->m_modData.modPaths.empty() && g_modLoader == nullptr)
+    {
+        KYBER_LOG(Error, "[ModLoader] " << g_program->m_modData.modPaths.size()
+                                     << " mod paths were requested, but the loader did not initialize before game simulation. "
+                                        "Mods are not active; check injection timing and KYBER_DISABLE_MODLOADER.");
+    }
 
     //double newFpsCap = 1.f / 500.f;
     //MemoryUtils::Patch(reinterpret_cast<void*>(0x142EF7668), &newFpsCap, sizeof(newFpsCap));
@@ -701,12 +714,20 @@ __int64 PersistenceAssetCheck()
 
 void FileSuperBundleManagerUpdateConfigHk(FileSuperBundleManager* inst)
 {
+    {
+        std::unique_lock<std::mutex> lock(g_program->m_startupMutex);
+        g_program->m_startupCondition.wait(lock, [] { return g_program->m_startupInitialized; });
+    }
     static const auto trampoline = HookManager::Call(FileSuperBundleManagerUpdateConfigHk);
     KYBER_LOG(Debug, "Updating SuperBundle config");
 
     if (std::getenv("KYBER_DISABLE_MODLOADER") == nullptr)
     {
         g_modLoader = new ModLoader(inst, g_program->m_modData);
+    }
+    else
+    {
+        KYBER_LOG(Warning, "[ModLoader] Disabled by KYBER_DISABLE_MODLOADER; requested mods will not be loaded");
     }
 
     trampoline(inst);
@@ -762,7 +783,6 @@ void Program::InitializeGameHooks()
         { OFFSET_GAMESIMULATION_SPAWNSERVER, GameSimulationSpawnServerHk },
         { OFFSET_READOBFUSCATED, ReadObfuscatedHk },
         { OFFSET_GETLOCALIZEDSTRING, GetLocalizedStringInternalHk },
-        { OFFSET_FILESUPERBUNDLEMANAGER_UPDATECONFIG, FileSuperBundleManagerUpdateConfigHk },
         { OFFSET_MEMORYARENA_LOG, MemoryArenaLog },
         { HOOK_OFFSET(0x146A4BA30), TeamInfo__isFriendlyHk },
         //{ HOOK_OFFSET(0x1483EB2B0), PersistenceAssetCheck },
