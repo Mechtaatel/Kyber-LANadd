@@ -294,16 +294,14 @@ class StartServerCommand extends Command<int> {
         final resp = await sl.get<KyberGRPCService>().login(authToken);
         kToken = resp.token;
       } catch (e) {
-        if (e is GrpcError) {
-          if (e.code == StatusCode.unauthenticated ||
-              e.code == StatusCode.permissionDenied) {
-            _logger.err('Kyber  Login Error: ${e.message}');
-          } else {
-            _logger.err('Failed to fetch Kyber auth token: $e');
-          }
-
-          return ExitCode.usage.code;
+        if (e is GrpcError &&
+            (e.code == StatusCode.unauthenticated ||
+                e.code == StatusCode.permissionDenied)) {
+          _logger.err('Kyber Login Error: ${e.message}');
+        } else {
+          _logger.err('Failed to fetch Kyber auth token: $e');
         }
+        return ExitCode.usage.code;
       }
     }
 
@@ -328,9 +326,10 @@ class StartServerCommand extends Command<int> {
     Env.set('KYBER_API_TOKEN', kToken);
 
     final noDedicated = argResults?['no-dedicated'] as bool? ?? false;
-    Env.set('KYBER_DEDICATED_SERVER', noDedicated ? '0' : '1');
     if (noDedicated) {
       Env.delete('KYBER_DEDICATED_SERVER');
+    } else {
+      Env.set('KYBER_DEDICATED_SERVER', '1');
     }
 
     final kyberPort =

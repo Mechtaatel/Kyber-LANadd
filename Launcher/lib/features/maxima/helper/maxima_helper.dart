@@ -27,6 +27,7 @@ import 'package:path/path.dart' as p;
 
 class MaximaHelper {
   static final Logger _logger = Logger('maxima_helper');
+  static bool _starting = false;
 
   static Future<void> requestGameLaunch(
     BuildContext context, {
@@ -57,18 +58,15 @@ class MaximaHelper {
       }
 
       final modPaths = modCollection.getModPaths();
-      final lanOnly =
-          initializeRequest.startServer.lanOnly ||
-          initializeRequest.hasJoinServer() &&
-              !initializeRequest.joinServer.hasId();
-      final preloadedMods = lanOnly
-          ? null
-          : await sl.get<KyberGRPCService>().launcherClient.getPreloadedMods(
+      final preload =
+          !LanMode.forLaunch(initializeRequest) &&
+          Preferences.general.enabledPreloadMods;
+      final preloadedMods = preload
+          ? await sl.get<KyberGRPCService>().launcherClient.getPreloadedMods(
               Empty(),
-            );
-      final modLimit = !lanOnly && Preferences.general.enabledPreloadMods
-          ? 1739 - preloadedMods!.mods.length
-          : 1739;
+            )
+          : null;
+      final modLimit = 1739 - (preloadedMods?.mods.length ?? 0);
       if (modPaths.length >= modLimit) {
         _logger.warning('Mod limit reached: ${modPaths.length}');
 
@@ -104,15 +102,6 @@ class MaximaHelper {
       return;
     }
 
-    // final gameConfig = await ConfigParser.parseConfig();
-    // if (gameConfig.enableDx12) {
-    //   _logger.warning('Launching game with DirectX 12 enabled');
-    //   NotificationService.warning(
-    //     message:
-    //     'DirectX 12 is enabled. This can cause instability and issues with Kyber.',
-    //   );
-    // }
-
     if (initializeRequest.startupCommands.isNotEmpty) {
       _logger.fine(
         'Starting game with startup commands: ${initializeRequest.startupCommands}',
@@ -140,28 +129,40 @@ class MaximaHelper {
     String? gameDataPath,
     List<FrostyMod>? mods,
   }) async {
+    if (_starting || sl.isRegistered<MaximaGameInstance>()) {
+      throw StateError('Battlefront II is already running or starting.');
+    }
+    _starting = true;
+    try {
+      return await _startGame(
+        initializeRequest: initializeRequest,
+        gameSlug: gameSlug,
+        gamePath: gamePath,
+        mods: mods,
+      );
+    } finally {
+      _starting = false;
+    }
+  }
+
+  static Future<MaximaGameInstance> _startGame({
+    InitializeRequest? initializeRequest,
+    String? gameSlug,
+    String? gamePath,
+    List<FrostyMod>? mods,
+  }) async {
     final path = Platform.environment['PATH'];
 
     if (path == null) {
       throw Exception('PATH environment variable is not set');
     }
 
-    final lanOnly =
-        LanMode.enabled ||
-        (initializeRequest?.startServer.lanOnly ?? false) ||
-        initializeRequest != null &&
-            initializeRequest.hasJoinServer() &&
-            !initializeRequest.joinServer.hasId();
+    final lanOnly = LanMode.forLaunch(initializeRequest);
     var moduleDirectory = lanOnly
         ? FileHelper.getGameModuleDirectory(lanOnly: true)
         : await FileHelper.prepareOnlineModule();
     final missingFiles = <String>[];
-    for (final name in [
-      'Kyber.dll',
-      'vivoxsdk.dll',
-      'ca_root.pem',
-      'VanillaBundleAggregation.kb',
-    ]) {
+    for (final name in FileHelper.modulePayloadFiles) {
       final file = File(p.join(moduleDirectory.path, name));
       if (!await file.exists() || await file.length() == 0) {
         missingFiles.add(name);
@@ -176,12 +177,15 @@ class MaximaHelper {
     if (Platform.isWindows) {
       moduleDirectory = await prepareModuleLaunchDirectory(moduleDirectory);
     }
-    final versionFile = File(
+    var versionFile = File(
       p.join(
         moduleDirectory.path,
         lanOnly ? 'VERSION' : 'LAN-ADD-VERSION',
       ),
     );
+    if (!await versionFile.exists()) {
+      versionFile = File(p.join(moduleDirectory.path, 'VERSION'));
+    }
     final moduleVersion = await versionFile.exists()
         ? (await versionFile.readAsString()).trim()
         : 'unknown';
@@ -244,25 +248,17 @@ class MaximaHelper {
       ProcessEnv.delete('KYBER_EXPERIMENTAL_DISABLE_FORCE_NOHDR');
     }
 
-    final gameClient = ClientGRPCService('127.0.0.1', interfacePort);
+    // Publish configuration before the child can ask the launcher's RPC server.
+    sl.get<KyberGRPCServer>().setInitializeRequest(
+      initializeRequest ?? InitializeRequest(),
+    );
     final gamePID = await maxima.startGame(
       gameSlug: gameSlug ?? 'star-wars-battlefront-2',
       gamePathOverride: gamePath,
     );
     _logger.info('Started game with PID: $gamePID');
 
-    if (sl.isRegistered<MaximaGameInstance>()) {
-      _logger.warning(
-        'ClientGRPCService was already registered, unregistering...',
-      );
-
-      try {
-        Process.killPid(sl.get<MaximaGameInstance>().pid);
-      } catch (_) {}
-
-      sl.unregister<MaximaGameInstance>();
-    }
-
+    final gameClient = ClientGRPCService('127.0.0.1', interfacePort);
     final instance = MaximaGameInstance(
       lanOnly: lanOnly,
       pid: gamePID,
@@ -274,31 +270,34 @@ class MaximaHelper {
       ),
     );
 
+    sl.registerSingleton<MaximaGameInstance>(instance);
     try {
-      sl.get<KyberGRPCServer>().setInitializeRequest(
-        initializeRequest ?? InitializeRequest(),
-      );
-      await maxima
-          .lsxGetEventStream(pid: gamePID, isStartup: true)
-          .firstWhere(
-            (e) => e == 'RequestLicense',
-            orElse: () => throw StateError(
-              'Battlefront II closed before requesting its EA license. '
-              'Kyber.dll has not been injected. Check EA login and the Maxima log.',
-            ),
-          );
+      // startGame already waits for the LSX ChallengeResponse and returns the
+      // game's PID. Inject here, as kyber-cli does, before asset initialization.
       await maxima.injectKyber(
         pid: gamePID,
         path: p.join(moduleDirectory.path, 'Kyber.dll'),
       );
-    } catch (e) {
+    } catch (e, stack) {
+      // Release only this failed launch; an unmodded child must not linger.
+      try {
+        Process.killPid(gamePID);
+      } on Object catch (cleanupError) {
+        _logger.warning('Could not stop failed launch $gamePID', cleanupError);
+      }
+      await sl.unregister<MaximaGameInstance>(instance: instance);
+      await gameClient.channel.shutdown();
+      await instance.closeStream();
       if (e is AnyhowException) {
-        _logger.severe('Failed to inject Kyber into game: ${e.message}');
+        _logger.severe(
+          'Failed to inject Kyber into game: ${e.message}',
+          e,
+          stack,
+        );
       }
       rethrow;
     }
 
-    sl.registerSingleton<MaximaGameInstance>(instance);
     sl.get<MaximaInstanceService>().addInstance(instance);
 
     return instance;

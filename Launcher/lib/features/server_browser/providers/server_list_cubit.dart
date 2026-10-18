@@ -14,8 +14,6 @@ import 'package:kyber_launcher/features/server_moderation/providers/moderation_s
 import 'package:kyber_launcher/gen/rust/api/maxima.dart';
 import 'package:kyber_launcher/injection_container.dart';
 
-List<ServicePlayer> _friends = [];
-
 const _pageLimit = 12;
 
 class ServerListCubit extends Cubit<ServerListState> {
@@ -23,29 +21,18 @@ class ServerListCubit extends Cubit<ServerListState> {
   int _page = 1;
   int _loadGeneration = 0;
   final _publicCache = PublicServerCache();
+  final LanDiscovery _discovery;
+  Set<String> _friends = {};
+  List<Server>? _servers;
+  String? _warning;
 
-  ServerListCubit() : super(const ServerListInitial()) {
+  ServerListCubit({LanDiscovery discovery = const LanDiscovery()})
+    : _discovery = discovery,
+      super(const ServerListInitial()) {
     filter = ServerFilter();
 
-    (LanMode.enabled ? Future.value(<ServicePlayer>[]) : getFriendList())
-        .then((value) {
-          _friends = value;
-          loadServers();
-        })
-        .timeout(
-          const Duration(seconds: 5),
-          onTimeout: () {
-            NotificationService.error(message: 'Failed to load friends list');
-            _friends = [];
-            loadServers();
-          },
-        )
-        .catchError((Object error) {
-          _friends = [];
-          loadServers();
-        });
-
-    emit(const ServerListLoading());
+    unawaited(loadServers());
+    if (!LanMode.enabled) unawaited(_loadFriends());
 
     _updateTimer = Timer.periodic(const Duration(seconds: 40), (timer) {
       final route = router.routeInformationProvider.value.uri.toString();
@@ -63,8 +50,21 @@ class ServerListCubit extends Cubit<ServerListState> {
 
   @override
   Future<void> close() async {
-    await super.close();
     _updateTimer.cancel();
+    await super.close();
+  }
+
+  Future<void> _loadFriends() async {
+    try {
+      final friends = await getFriendList().timeout(const Duration(seconds: 5));
+      if (isClosed) return;
+      _friends = friends.map((friend) => friend.displayName).toSet();
+      _publishServers();
+    } on Object {
+      if (!isClosed) {
+        NotificationService.error(message: 'Failed to load friends list');
+      }
+    }
   }
 
   void checkUpdate() {
@@ -76,8 +76,7 @@ class ServerListCubit extends Cubit<ServerListState> {
 
   void clearSearch() {
     if (filter.query?.isNotEmpty ?? false) {
-      filter = filter.copyWith(query: '');
-      _needsUpdate = true;
+      setFilter(filter.copyWith(query: ''));
     }
   }
 
@@ -87,25 +86,8 @@ class ServerListCubit extends Cubit<ServerListState> {
     }
 
     _page = 1;
-
-    if (state is ServerListLoaded) {
-      final x = state as ServerListLoaded;
-      emit(
-        ServerListLoaded(
-          servers: x.servers,
-          page: _page,
-          pages: x.pages,
-          filter: filter,
-        ),
-      );
-    }
-
     this.filter = filter;
-
-    emit(
-      ServerListLoading(page: _page, pages: state.pages, filter: this.filter),
-    );
-    loadServers();
+    _publishServers();
   }
 
   void goToPage(int page) {
@@ -116,35 +98,16 @@ class ServerListCubit extends Cubit<ServerListState> {
       }
 
       _page = page;
-      emit(ServerListLoading(page: _page, pages: x.pages, filter: filter));
-      loadServers();
+      _publishServers();
     }
   }
 
   void nextPage() {
-    if (state is ServerListLoaded) {
-      final x = state as ServerListLoaded;
-      if (x.page + 1 > x.pages) {
-        return;
-      }
-
-      _page = x.page + 1;
-      emit(ServerListLoading(page: _page, pages: x.pages, filter: filter));
-      loadServers();
-    }
+    goToPage(_page + 1);
   }
 
   void previousPage() {
-    if (state is ServerListLoaded) {
-      final x = state as ServerListLoaded;
-      if (x.page - 1 < 1) {
-        return;
-      }
-
-      _page = x.page - 1;
-      emit(ServerListLoading(page: _page, pages: x.pages, filter: filter));
-      loadServers();
-    }
+    goToPage(_page - 1);
   }
 
   Future<void> loadServers() async {
@@ -157,7 +120,7 @@ class ServerListCubit extends Cubit<ServerListState> {
 
     _needsUpdate = false;
 
-    final lanFuture = LanDiscovery().discover();
+    final lanFuture = _discovery.discover();
     ServerList? servers;
     String? warning;
     try {
@@ -187,6 +150,15 @@ class ServerListCubit extends Cubit<ServerListState> {
       }
     }
 
+    _servers = s;
+    _warning = warning;
+    _publishServers();
+  }
+
+  // UI changes reuse the last scan. Only refresh requests touch the network.
+  void _publishServers() {
+    if (isClosed || _servers == null) return;
+    final s = List<Server>.of(_servers!);
     if (Preferences.admin.dummyServer) {
       s.add(KyberDummyServer(title: 'Dummy Server'));
       s.add(
@@ -322,12 +294,8 @@ class ServerListCubit extends Cubit<ServerListState> {
           final serverA = a.serverInfo;
           final serverB = b.serverInfo;
 
-          final aIsFriend = _friends.any(
-            (e) => e.displayName == serverA.creator,
-          );
-          final bIsFriend = _friends.any(
-            (e) => e.displayName == serverB.creator,
-          );
+          final aIsFriend = isServerCreatorFriend(serverA);
+          final bIsFriend = isServerCreatorFriend(serverB);
 
           final priority = serverA
               .browserPriority(friend: aIsFriend)
@@ -354,15 +322,18 @@ class ServerListCubit extends Cubit<ServerListState> {
         });
 
     if (filter.query != null && filter.query!.isNotEmpty) {
+      final query = filter.query!.toLowerCase();
       newServers.removeWhere((element) {
         final info = element.serverInfo;
-        return !info.name.toLowerCase().contains(filter.query!.toLowerCase()) &&
-            !info.creator.toLowerCase().contains(filter.query!.toLowerCase());
+        return !info.name.toLowerCase().contains(query) &&
+            !info.creator.toLowerCase().contains(query);
       });
     }
 
     final pages = (newServers.length / _pageLimit).ceil();
-    if (_page > pages && pages > 0) {
+    if (pages == 0) {
+      _page = 1;
+    } else if (_page > pages) {
       _page = pages;
     }
 
@@ -376,13 +347,13 @@ class ServerListCubit extends Cubit<ServerListState> {
         page: _page,
         pages: pages,
         filter: filter,
-        warning: warning,
+        warning: _warning,
       ),
     );
   }
 
   /// Checks if a server's creator is in the friends list.
   bool isServerCreatorFriend(Server server) {
-    return _friends.any((e) => e.displayName == server.creator);
+    return _friends.contains(server.creator);
   }
 }

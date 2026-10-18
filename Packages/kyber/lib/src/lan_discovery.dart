@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 
 import '../gen/Proto/kyber_api.pb.dart';
+import '../gen/Proto/kyber_interface.pb.dart' show InitializeRequest;
 
 /// Explicit offline session; EA/Maxima still handles ownership and game startup.
 class LanMode {
@@ -11,9 +12,20 @@ class LanMode {
 
   static bool fromEnvironment(Map<String, String> environment) =>
       environment['KYBER_LAN_ONLY'] == '1' ||
-      const {'1', 'true', 'yes', 'on'}.contains(
-        environment['KYBER_LAN']?.toLowerCase(),
-      );
+      const {
+        '1',
+        'true',
+        'yes',
+        'on',
+      }.contains(environment['KYBER_LAN']?.toLowerCase());
+
+  /// A direct route to an online server still needs Kyber authentication.
+  static bool forLaunch(InitializeRequest? request) =>
+      enabled ||
+      (request?.startServer.lanOnly ?? false) ||
+      request != null &&
+          request.hasJoinServer() &&
+          request.joinServer.id.isEmpty;
 }
 
 extension LanServer on Server {
@@ -23,10 +35,10 @@ extension LanServer on Server {
   int browserPriority({required bool friend}) => official
       ? 0
       : isLan
-          ? 1
-          : friend
-              ? 2
-              : 3;
+      ? 1
+      : friend
+      ? 2
+      : 3;
 }
 
 /// Retain public listings briefly across API failures, never cached LAN routes.
@@ -36,8 +48,9 @@ class PublicServerCache {
 
   List<Server> resolve(List<Server>? response, {required DateTime now}) {
     if (response != null) {
-      _servers =
-          response.map((s) => Server.fromBuffer(s.writeToBuffer())).toList();
+      _servers = response
+          .map((s) => Server.fromBuffer(s.writeToBuffer()))
+          .toList();
       _updated = now;
     }
     if (_updated == null ||
@@ -75,17 +88,17 @@ class LanDiscovery {
       isLocalAddress(address) ||
       address.type == InternetAddressType.IPv4 &&
           address.rawAddress[0] == 26 &&
-          interfaces.any((a) =>
-              a.type == InternetAddressType.IPv4 && a.rawAddress[0] == 26);
+          interfaces.any(
+            (a) => a.type == InternetAddressType.IPv4 && a.rawAddress[0] == 26,
+          );
 
   static List<InternetAddress> probeTargets(InternetAddress address) =>
       address.isLoopback
-          ? [InternetAddress.loopbackIPv4]
-          : [
-              InternetAddress('255.255.255.255'),
-              if (address.rawAddress[0] == 26)
-                InternetAddress('26.255.255.255'),
-            ];
+      ? [InternetAddress.loopbackIPv4]
+      : [
+          InternetAddress('255.255.255.255'),
+          if (address.rawAddress[0] == 26) InternetAddress('26.255.255.255'),
+        ];
 
   /// Preserve authenticated public metadata, but prefer a fresh direct route.
   static Server preferLan(Server online, Server local) {
@@ -117,8 +130,9 @@ class LanDiscovery {
       final interfaceAddresses = interfaces.expand((i) => i.addresses).toList();
       final addresses = <InternetAddress>[
         InternetAddress.loopbackIPv4,
-        ...interfaceAddresses
-            .where((a) => isDiscoveryPeer(a, interfaceAddresses)),
+        ...interfaceAddresses.where(
+          (a) => isDiscoveryPeer(a, interfaceAddresses),
+        ),
       ];
       for (final address in addresses) {
         try {
@@ -134,8 +148,10 @@ class LanDiscovery {
                   !isDiscoveryPeer(p.address, addresses) ||
                   p.data.length <= query.length ||
                   p.data.length > 60000 ||
-                  !Iterable<int>.generate(query.length)
-                      .every((i) => p.data[i] == query[i])) continue;
+                  !Iterable<int>.generate(
+                    query.length,
+                  ).every((i) => p.data[i] == query[i]))
+                continue;
               try {
                 final server = Server.fromBuffer(p.data.sublist(query.length));
                 if (server.name.isEmpty ||
@@ -143,7 +159,8 @@ class LanDiscovery {
                     server.port < 1 ||
                     server.port > 65535 ||
                     server.maxPlayerCount == 0 ||
-                    servers.length >= 256) continue;
+                    servers.length >= 256)
+                  continue;
                 final offline = server.meta['lan_only'] == '1';
                 if (offline && server.requiresPassword) continue;
                 server

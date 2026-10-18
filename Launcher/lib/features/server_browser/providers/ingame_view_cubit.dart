@@ -154,7 +154,6 @@ class IngameViewCubit extends Cubit<IngameViewState> {
         },
       );
 
-      await Future<void>.delayed(const Duration(seconds: 3));
     } on WebSocketException catch (e, s) {
       if (isClosed || generation != _loadGeneration) return;
       var error = 'Failed to connect to websocket';

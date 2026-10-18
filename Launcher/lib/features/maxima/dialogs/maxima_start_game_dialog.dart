@@ -39,7 +39,6 @@ class MaximaStartGameDialog extends StatefulWidget {
 }
 
 class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
-  Timer? _gameStatusTimer;
   StreamSubscription<String>? _gameEvents;
 
   bool updating = false;
@@ -50,12 +49,7 @@ class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
   void initState() {
     SchedulerBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      final lanOnly =
-          LanMode.enabled ||
-          (widget.initializeRequest?.startServer.lanOnly ?? false) ||
-          widget.initializeRequest != null &&
-              widget.initializeRequest!.hasJoinServer() &&
-              !widget.initializeRequest!.joinServer.hasId();
+      final lanOnly = LanMode.forLaunch(widget.initializeRequest);
       try {
         final available =
             !lanOnly &&
@@ -243,7 +237,6 @@ class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
   @override
   void dispose() {
     _gameEvents?.cancel();
-    _gameStatusTimer?.cancel();
     super.dispose();
   }
 
@@ -265,7 +258,7 @@ class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
               const SizedBox(width: 15),
               if (updating)
                 Text(
-                  'Preparing bundled Kyber Module...',
+                  'Updating Kyber Module...',
                   style: FluentTheme.of(context).typography.bodyLarge,
                 ),
               if (!updating)

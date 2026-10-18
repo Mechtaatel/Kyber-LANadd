@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:kyber_collection/kyber_collection.dart';
 
 /// Maxima's Windows service passes UTF-8 bytes to LoadLibraryA. Keep its
 /// injection path ASCII until the service supports LoadLibraryW.
@@ -40,16 +41,7 @@ Future<Directory> prepareModuleLaunchDirectory(
         }.contains(name)) {
       continue;
     }
-    final destination = File('${target.path}/$name');
-    final expected = await sha256.bind(entry.openRead()).first;
-    if (await destination.exists() &&
-        await sha256.bind(destination.openRead()).first == expected) {
-      continue;
-    }
-    await entry.copy(destination.path);
-    if (await sha256.bind(destination.openRead()).first != expected) {
-      throw StateError('Kyber module copy verification failed: $name');
-    }
+    await FileHelper.copyModuleFile(entry, File('${target.path}/$name'));
   }
   return target;
 }

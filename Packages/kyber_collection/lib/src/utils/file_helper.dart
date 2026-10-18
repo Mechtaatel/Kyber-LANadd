@@ -68,12 +68,7 @@ class FileHelper {
     return bundled;
   }
 
-  static const modulePayloadFiles = [
-    'Kyber.dll',
-    'vivoxsdk.dll',
-    'ca_root.pem',
-    'VanillaBundleAggregation.kb',
-  ];
+  static const modulePayloadFiles = OfficialModuleUpdater.requiredFiles;
 
   static Future<void> validateBundledModule() async {
     final bundled = getLanModuleDirectory();
@@ -133,11 +128,11 @@ class FileHelper {
           ? source
           : File('${official.path}/$name');
       final output = File('${target.path}/$name');
-      if (!await output.exists() ||
-          await sha256.bind(input.openRead()).first !=
-              await sha256.bind(output.openRead()).first) {
-        await _copyVerified(input, output);
-      }
+      await copyModuleFile(input, output);
+    }
+    final lanVersion = File('${bundled.path}/VERSION');
+    if (await lanVersion.exists()) {
+      await copyModuleFile(lanVersion, File('${target.path}/LAN-ADD-VERSION'));
     }
     for (final name in [
       'msvcp140.dll',
@@ -145,20 +140,24 @@ class FileHelper {
       'vcruntime140_1.dll',
     ]) {
       final runtime = File('${bundled.path}/$name');
-      if (await runtime.exists() &&
-          !File('${target.path}/$name').existsSync()) {
-        await _copyVerified(runtime, File('${target.path}/$name'));
+      if (await runtime.exists()) {
+        await copyModuleFile(runtime, File('${target.path}/$name'));
       }
     }
     return target;
   }
 
-  static Future<void> _copyVerified(File source, File target) async {
+  /// Verify once, stage the copy, then atomically replace the destination.
+  /// Shared by the online overlay and the ASCII-path compatibility directory.
+  static Future<void> copyModuleFile(File source, File target) async {
+    final expected = await sha256.bind(source.openRead()).first;
+    if (await target.exists() &&
+        await sha256.bind(target.openRead()).first == expected)
+      return;
     final staging = await target.parent.createTemp('.lan-add-');
     try {
       final copy = await source.copy('${staging.path}/payload');
-      if (await sha256.bind(copy.openRead()).first !=
-          await sha256.bind(source.openRead()).first) {
+      if (await sha256.bind(copy.openRead()).first != expected) {
         throw StateError(
           'LAN ADD module copy verification failed: ${target.path}',
         );
@@ -179,13 +178,5 @@ class FileHelper {
     return baseDir;
   }
 
-  static Directory getCollectionDirectory() {
-    final baseDir = Directory(
-      Platform.isWindows
-          ? '${Platform.environment['APPDATA']}\\ArmchairDevelopers\\Kyber\\Mods'
-          : '${Platform.environment['HOME']}/.local/share/kyber/mods',
-    );
-
-    return baseDir;
-  }
+  static Directory getCollectionDirectory() => getModsDirectory();
 }

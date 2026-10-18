@@ -70,10 +70,7 @@ extension VersionModuleExtension on VersionModule {
       case VersionModule.module:
         final modulePath = FileHelper.getOnlineModuleDirectory().path;
         return [
-          '$modulePath/ca_root.pem',
-          '$modulePath/vivoxsdk.dll',
-          '$modulePath/VanillaBundleAggregation.kb',
-          '$modulePath/Kyber.dll',
+          for (final name in FileHelper.modulePayloadFiles) '$modulePath/$name',
         ];
     }
   }
