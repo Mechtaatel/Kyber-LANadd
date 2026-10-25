@@ -234,6 +234,7 @@ class ModerationCubit extends Cubit<ModerationServerState> {
     if (state.server == null && serverId == null) {
       return;
     }
+    if ((serverId ?? state.id ?? '').isEmpty) return;
 
     final loadId = ++_loadId;
     unawaited(_channel?.sink.close());

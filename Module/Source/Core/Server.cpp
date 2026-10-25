@@ -769,9 +769,22 @@ void Server::Heartbeat(const UpdateParameters& params)
 
 void Server::Register(bool force, bool reuseId)
 {
-    if (!force && (!IsRunning() || !m_creationInfo || !m_onlineMode))
+    if (!m_creationInfo || (!force && !IsRunning()))
     {
+        return;
+    }
+
+    // force bypasses the startup state, never the requested LAN-only mode.
+    // Use the configured mode: m_onlineMode can also be false during an
+    // online registration retry and must not turn that retry into a LAN host.
+    if (m_creationInfo->lanOnly || !IsOnlineMode())
+    {
+        m_onlineMode = false;
         m_serverId = "lan:" + std::to_string(GetCurrentProcessId());
+        return;
+    }
+    if (!force && !m_onlineMode)
+    {
         return;
     }
 

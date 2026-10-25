@@ -31,6 +31,7 @@ import 'package:kyber_launcher/shared/ui/elements/filter_dropdown.dart';
 import 'package:kyber_launcher/shared/ui/elements/kyber_page_selector.dart';
 import 'package:kyber_launcher/shared/ui/layout/bordered_content.dart';
 import 'package:kyber_launcher/shared/ui/ui.dart';
+import 'package:logging/logging.dart';
 import 'package:super_sliver_list/super_sliver_list.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
@@ -45,27 +46,31 @@ class _ModsPageState extends State<ModsPage> {
   int _pageIndex = 0;
   int _categoryIndex = 0;
   int _lastSelectedIndex = -1;
+  Future<void>? _browserReady;
 
-  @override
-  void initState() {
-    super.initState();
-    _initCategoryIndex();
-  }
-
-  void _initCategoryIndex() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final categories = sl<NexusModsService>().nexusBridge.categories;
+  Future<void> _prepareBrowser() async {
+    try {
+      final service = await sl.getAsync<NexusModsService>().timeout(
+        const Duration(seconds: 15),
+      );
+      if (!mounted) return;
+      // Creating ModBrowserCubit reads Nexus categories, so only do this after
+      // the service is ready. Local mod management does not require Nexus.
       final selectedCategory = context.read<ModBrowserCubit>().currentCategory;
-
-      if (selectedCategory == null) return;
-
-      setState(() {
-        _categoryIndex = categories.indexOf(selectedCategory);
-      });
-    });
+      final index = service.nexusBridge.categories.indexWhere(
+        (category) => category.id == selectedCategory?.id,
+      );
+      _categoryIndex = index < 0 ? 0 : index;
+    } catch (error, stack) {
+      Logger(
+        'mods',
+      ).warning('Could not initialize Nexus browser', error, stack);
+      rethrow;
+    }
   }
 
   void _onPageChanged(int value) {
+    if (value == 1) _browserReady ??= _prepareBrowser();
     setState(() => _pageIndex = value);
   }
 
@@ -173,6 +178,46 @@ class _ModsPageState extends State<ModsPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_pageIndex == 1) {
+      return FutureBuilder<void>(
+        future: _browserReady,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.done &&
+              !snapshot.hasError) {
+            return _buildContent(context);
+          }
+          return BorderedContent(
+            header: _TabSelector(
+              pageIndex: _pageIndex,
+              onPageChanged: _onPageChanged,
+            ),
+            content: Center(
+              child: snapshot.hasError
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      spacing: 12,
+                      children: [
+                        const Text(
+                          'Nexus Mods is unavailable. Local mods are still available.',
+                        ),
+                        KyberButton(
+                          text: 'Retry',
+                          onPressed: () => setState(() {
+                            _browserReady = _prepareBrowser();
+                          }),
+                        ),
+                      ],
+                    )
+                  : const ProgressRing(),
+            ),
+          );
+        },
+      );
+    }
+    return _buildContent(context);
+  }
+
+  Widget _buildContent(BuildContext context) {
     return Row(
       children: [
         Expanded(

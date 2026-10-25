@@ -46,6 +46,7 @@ import 'package:kyber_launcher/injection_container.dart';
 import 'package:kyber_launcher/shared/ui/layout/kyber_background.dart';
 import 'package:kyber_launcher/shared/ui/utils/hive_listener.dart';
 import 'package:kyber_launcher/shared/window_controller_screen.dart';
+import 'package:kyber_launcher/shared/launcher_diagnostics.dart';
 import 'package:logging/logging.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -102,7 +103,8 @@ Future<void> initSentry(String currentVersion) async => SentryFlutter.init(
   (options) {
     options
       ..autoSessionTrackingInterval = const Duration(minutes: 1)
-      ..dsn = 'https://7331e76d0ced674d8855b0fb3032fe33@o4510921032859648.ingest.de.sentry.io/4510937360826448'
+      ..dsn =
+          'https://7331e76d0ced674d8855b0fb3032fe33@o4510921032859648.ingest.de.sentry.io/4510937360826448'
       ..tracesSampleRate = 1.0
       ..attachThreads = true
       ..enableAppHangTracking = true
@@ -352,6 +354,8 @@ class _AppState extends State<App> {
                 child: child,
               );
             }
+
+            child = LauncherDiagnostics(child: child);
 
             child = DefaultSvgTheme(
               theme: const .new(currentColor: Color(0xFFD9D9D9)),

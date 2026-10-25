@@ -79,10 +79,10 @@ class ModBrowserCubit extends Cubit<ModBrowserState> {
   ModBrowserCubit() : super(const ModBrowserInitial()) {
     final lastIndex = Preferences.general.lastSelectedModBrowserCategory;
     final categories = sl<NexusModsService>().nexusBridge.categories;
-    final category = switch (lastIndex) {
-      null => categories.first,
-      _ => categories[lastIndex],
-    };
+    final category =
+        lastIndex != null && lastIndex >= 0 && lastIndex < categories.length
+        ? categories[lastIndex]
+        : categories.first;
     currentCategory = category;
     loadPage();
   }

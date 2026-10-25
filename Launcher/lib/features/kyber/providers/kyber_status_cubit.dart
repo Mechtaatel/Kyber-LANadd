@@ -18,38 +18,42 @@ class KyberStatusCubit extends Cubit<KyberStatusState> {
       (_) async => onTick(),
     );
 
-    _rpcServerTimer = Timer.periodic(const Duration(minutes: 2), (_) async {
-      if (!sl.isRegistered<MaximaGameInstance>()) {
-        return;
-      }
+    _rpcServerTimer = Timer.periodic(
+      const Duration(minutes: 2),
+      (_) => _refreshPresence(),
+    );
+  }
 
-      final state = await sl
-          .get<MaximaGameInstance>()
-          .clientService
-          .commonClient
-          .getInfo(Empty());
-      if (!state.hasServer() && !state.client.hasServerId()) {
+  Future<void> _refreshPresence() async {
+    if (isClosed || !sl.isRegistered<MaximaGameInstance>()) return;
+    try {
+      final instance = sl.get<MaximaGameInstance>();
+      final info = await instance.clientService.commonClient.getInfo(Empty());
+      if (isClosed) return;
+      if (!info.hasServer() && !info.client.hasServerId()) {
         sl.get<RichPresence>().clearPresence();
         return;
       }
 
-      final id = state.hasServer() ? state.server.id : state.client.serverId;
-      if (id.startsWith('lan:')) return;
+      final id = info.hasServer() ? info.server.id : info.client.serverId;
+      if (id.isEmpty || instance.lanOnly || id.startsWith('lan:')) return;
       final client = sl.get<KyberGRPCService>();
       final server = await client.serverBrowserClient.getServer(
         ServerRequest(id: id),
       );
-      if (state is KyberStatusHosting) {
+      if (isClosed) return;
+      final current = state;
+      if (current is KyberStatusHosting) {
         emit(
           KyberStatusHosting(
-            serverState: (state as KyberStatusHosting).serverState,
+            serverState: current.serverState,
             server: server,
           ),
         );
-      } else if (state is KyberStatusPlaying) {
+      } else if (current is KyberStatusPlaying) {
         emit(
           KyberStatusPlaying(
-            serverState: (state as KyberStatusPlaying).serverState,
+            serverState: current.serverState,
             server: server,
             joined: joined,
           ),
@@ -58,11 +62,14 @@ class KyberStatusCubit extends Cubit<KyberStatusState> {
         emit(KyberStatusNormal());
       }
 
-      sl.get<RichPresence>().updatePresenceKyber(state, server);
-    });
+      sl.get<RichPresence>().updatePresenceKyber(info, server);
+    } catch (e, stack) {
+      _logger.warning('Failed to refresh server presence', e, stack);
+    }
   }
 
   Future<void> onTick() async {
+    if (isClosed) return;
     final isRegistered = sl.isRegistered<MaximaGameInstance>();
     if (!isRegistered) {
       final rp = sl.get<RichPresence>();
@@ -78,24 +85,30 @@ class KyberStatusCubit extends Cubit<KyberStatusState> {
     try {
       final client = sl.get<MaximaGameInstance>();
       final data = await client.clientService.commonClient.getInfo(Empty());
+      if (isClosed) return;
       if (data.vivoxInitialized && client.voipSettings == null) {
         sl.get<VoipService>().setGameVoipSettings();
       }
 
       final isKyber = data.hasClient() || data.hasServer();
+      final id = data.hasServer() ? data.server.id : data.client.serverId;
+      // A game can report its server before registration has supplied an ID.
+      // Do not advertise it as ready or send an empty ID to the public API.
+      if (isKyber && id.isEmpty) {
+        emit(KyberStatusNormal());
+        return;
+      }
       var server = (state is KyberStatusPlaying || state is KyberStatusHosting)
           ? ((state as dynamic).server as Server?)
           : null;
-      if (isKyber &&
-          (state is KyberStatusInitial ||
-              ((state is KyberStatusPlaying || state is KyberStatusHosting) &&
-                  (state as dynamic).server == null))) {
-        final id = data.hasServer() ? data.server.id : data.client.serverId;
-        if (!id.startsWith('lan:')) {
+      if (server?.id != id) server = null;
+      if (isKyber && server == null) {
+        if (!client.lanOnly && !id.startsWith('lan:')) {
           final client = sl.get<KyberGRPCService>();
           server = await client.serverBrowserClient.getServer(
             ServerRequest(id: id),
           );
+          if (isClosed) return;
           sl.get<RichPresence>().updatePresenceKyber(data, server);
         }
       }
@@ -113,7 +126,7 @@ class KyberStatusCubit extends Cubit<KyberStatusState> {
       } else {
         emit(KyberStatusNormal());
       }
-    } catch (e) {
+    } catch (e, stack) {
       if (e is GrpcError) {
         if (e.code == StatusCode.unavailable || e.code == StatusCode.unknown) {
           return;
@@ -122,8 +135,7 @@ class KyberStatusCubit extends Cubit<KyberStatusState> {
         _logger.severe('GRPC Error: ${e.message}');
       }
 
-      print(e);
-      rethrow;
+      _logger.warning('Failed to update game status', e, stack);
     }
   }
 

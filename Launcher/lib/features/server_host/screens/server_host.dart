@@ -52,6 +52,7 @@ class _ServerHostState extends State<ServerHost> {
           previous is KyberStatusHosting && current is! KyberStatusHosting,
       listener: (context, state) {
         if (state is KyberStatusHosting) {
+          if (state.serverState.id.isEmpty) return;
           Logger(
             'server_host',
           ).info('Detected hosting status (${state.serverState.id})');

@@ -1,12 +1,12 @@
 import 'dart:io';
 
-import 'package:archive/archive_io.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:kyber_launcher/core/services/app_settings.dart';
 import 'package:kyber_launcher/core/services/notification_service.dart';
+import 'package:kyber_launcher/core/utils/log_archive.dart';
 import 'package:kyber_launcher/gen/rust/api/maxima.dart' as mx;
 import 'package:kyber_launcher/main.dart';
 import 'package:logging/logging.dart';
@@ -78,87 +78,81 @@ class CustomLogger {
     });
   }
 
+  static bool _logExportInProgress = false;
+
   static Future<void> requestLogExport() async {
-    final file = await getSaveLocation(
-      suggestedName:
-          'logs_${DateTime.now().toString().split('.').first.replaceAll(':', '-').replaceAll(' ', '_')}.zip',
-      acceptedTypeGroups: [
-        const XTypeGroup(
-          label: 'Zip-Archive',
-          extensions: ['zip'],
-        ),
-      ],
-    );
+    if (_logExportInProgress) return;
+    _logExportInProgress = true;
+    try {
+      Directory? downloads;
+      try {
+        downloads = await getDownloadsDirectory();
+      } catch (_) {
+        // The native save dialog can still work without this optional location.
+      }
+      final name =
+          'logs_${DateTime.now().toString().split('.').first.replaceAll(':', '-').replaceAll(' ', '_')}.zip';
+      final file = await getSaveLocation(
+        suggestedName: name,
+        initialDirectory: downloads?.path,
+        acceptedTypeGroups: const [
+          XTypeGroup(label: 'Zip-Archive', extensions: ['zip']),
+        ],
+      );
+      if (file == null) return;
+      final outputPath = file.path;
 
-    if (file == null) {
-      return;
-    }
-
-    final documentsDirectory = await getApplicationDocumentsDirectory();
-
-    final maximaLog = File(
-      'C:/ProgramData/Maxima/Logs/MaximaBackgroundService.log',
-    );
-    final launcherLog = File(join(applicationDocumentsDirectory, 'log.txt'));
-    final crashDumpsDir = Directory(
-      '${documentsDirectory.path}\\STAR WARS Battlefront II\\CrashDumps',
-    );
-    var crashDumps = <File>[];
-    if (crashDumpsDir.existsSync()) {
-      crashDumps = crashDumpsDir.listSync().whereType<File>().toList()
-        ..sort(
-          (a, b) => a.statSync().modified.compareTo(b.statSync().modified),
+      String? crashDumpsDirectory;
+      try {
+        final documents = await getApplicationDocumentsDirectory();
+        crashDumpsDirectory = join(
+          documents.path,
+          'STAR WARS Battlefront II',
+          'CrashDumps',
         );
-    }
-
-    final encoder = ZipFileEncoder()..create(file.path);
-
-    if (maximaLog.existsSync()) {
-      await encoder.addFile(maximaLog, 'maxima-log.txt');
-    }
-
-    if (launcherLog.existsSync()) {
-      await encoder.addFile(launcherLog, 'launcher-log.txt');
-    }
-
-    if (Directory(
-      "${Platform.environment['APPDATA']}\\ArmchairDevelopers\\Kyber\\Logs",
-    ).existsSync()) {
-      final kyberLogsList = Directory(
-        "${Platform.environment['APPDATA']}\\ArmchairDevelopers\\Kyber\\Logs",
-      ).listSync();
-      final kyberLogs =
-          kyberLogsList
-              .where((e) => basename(e.path).startsWith('kyber_'))
-              .toList()
-            ..sort(
-              (a, b) => a.statSync().modified.compareTo(b.statSync().modified),
-            );
-      final kyberServerLogs =
-          kyberLogsList
-              .where((e) => basename(e.path).startsWith('kyber-server'))
-              .toList()
-            ..sort(
-              (a, b) => a.statSync().modified.compareTo(b.statSync().modified),
-            );
-      if (kyberLogs.isNotEmpty) {
-        await encoder.addFile(File(kyberLogs.last.path));
+      } catch (error, stack) {
+        Logger(
+          'log_export',
+        ).warning('Could not locate crash dumps', error, stack);
       }
 
-      if (kyberServerLogs.isNotEmpty) {
-        await encoder.addFile(File(kyberServerLogs.last.path));
+      final request = LogArchiveRequest(
+        outputPath: outputPath,
+        launcherLog: join(applicationDocumentsDirectory, 'log.txt'),
+        maximaLog: join(
+          Platform.environment['ProgramData'] ?? 'C:/ProgramData',
+          'Maxima',
+          'Logs',
+          'MaximaBackgroundService.log',
+        ),
+        gameLogsDirectory: join(
+          Platform.environment['APPDATA'] ??
+              dirname(applicationDocumentsDirectory),
+          'ArmchairDevelopers',
+          'Kyber',
+          'Logs',
+        ),
+        crashDumpsDirectory: crashDumpsDirectory,
+        buildInfoPath: join(
+          dirname(Platform.resolvedExecutable),
+          'BUILD-INFO.json',
+        ),
+      );
+      final warnings = await compute(createLogArchive, request);
+      if (warnings.isEmpty) {
+        NotificationService.success(message: 'Logs exported to $outputPath');
+      } else {
+        NotificationService.warning(
+          message:
+              'Logs exported to $outputPath. Some files were unavailable; see export-info.txt.',
+        );
       }
-
-      if (crashDumps.isNotEmpty) {
-        await encoder.addFile(File(crashDumps.last.path));
-      }
+    } catch (error, stack) {
+      Logger('log_export').severe('Log export failed', error, stack);
+      NotificationService.error(message: 'Could not export logs: $error');
+    } finally {
+      _logExportInProgress = false;
     }
-
-    await encoder.close();
-    NotificationService.showNotification(
-      message: 'Logs successfully exported',
-      severity: InfoBarSeverity.success,
-    );
   }
 
   static String getLogs() {

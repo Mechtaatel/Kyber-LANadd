@@ -113,7 +113,9 @@ class _KyberContentDialogState extends State<KyberContentDialog>
     );
     Future.delayed(
       const Duration(milliseconds: 50),
-      () => _animationController.forward(),
+      () {
+        if (mounted) _animationController.forward();
+      },
     );
     super.initState();
   }
@@ -267,6 +269,18 @@ class _KyberContentDialogState extends State<KyberContentDialog>
   }
 }
 
+// Async launch events may finish together. Never dismiss a page or a newer
+// dialog when the dialog that owns this context has already been dismissed.
+void dismissKyberDialog(BuildContext context) {
+  final route = ModalRoute.of(context);
+  if (route is! PopupRoute || !route.isActive) return;
+  if (route.isCurrent) {
+    route.navigator?.pop();
+  } else {
+    route.navigator?.removeRoute(route);
+  }
+}
+
 Future<T?> showKyberDialog<T extends Object?>({
   required BuildContext context,
   required WidgetBuilder builder,
@@ -400,6 +414,6 @@ class _DismissAction extends DismissAction {
 
   @override
   void invoke(covariant DismissIntent intent) {
-    Navigator.of(context).pop();
+    dismissKyberDialog(context);
   }
 }

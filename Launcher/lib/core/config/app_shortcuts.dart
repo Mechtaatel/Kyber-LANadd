@@ -2,18 +2,12 @@ import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:kyber_launcher/core/services/app_settings.dart';
 import 'package:kyber_launcher/core/services/notification_service.dart';
-import 'package:kyber_launcher/core/utils/custom_logger.dart';
 
 class AppShortcuts {
   static Map<ShortcutActivator, VoidCallback> getNavigationShortcuts(
     BuildContext context,
   ) {
     return {
-      LogicalKeySet(
-        LogicalKeyboardKey.control,
-        LogicalKeyboardKey.alt,
-        LogicalKeyboardKey.space,
-      ): CustomLogger.requestLogExport,
       LogicalKeySet(
         LogicalKeyboardKey.control,
         LogicalKeyboardKey.shift,
