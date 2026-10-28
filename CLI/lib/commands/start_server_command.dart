@@ -54,6 +54,11 @@ class StartServerCommand extends Command<int> {
         defaultsTo: '40',
         help: 'Specify the maximum number of players',
       )
+      ..addOption(
+        'max-spectators',
+        defaultsTo: '4',
+        help: 'Spectator slots (players + spectators must not exceed 64)',
+      )
       ..addOption('mode', help: 'Specify the mode')
       ..addOption('map', help: 'Specify the map')
       ..addOption('rotation-file', help: 'Specify the rotation file to use')
@@ -159,6 +164,25 @@ class StartServerCommand extends Command<int> {
             as String?;
     if (serverName == null || serverName.isEmpty) {
       _logger.err('server-name is required');
+      return ExitCode.usage.code;
+    }
+
+    final maxPlayers = int.tryParse(
+      Platform.environment['KYBER_SERVER_MAX_PLAYERS'] ??
+          argResults?['max-players'] as String? ??
+          '40',
+    );
+    final maxSpectators = int.tryParse(
+      Platform.environment['KYBER_SERVER_MAX_SPECTATORS'] ??
+          argResults?['max-spectators'] as String? ??
+          '4',
+    );
+    if (maxPlayers == null ||
+        maxSpectators == null ||
+        maxPlayers < 1 ||
+        maxSpectators < 0 ||
+        maxPlayers + maxSpectators > 64) {
+      _logger.err('Players and spectators must fit within 64 slots.');
       return ExitCode.usage.code;
     }
 
@@ -493,9 +517,6 @@ class StartServerCommand extends Command<int> {
     final server = KyberGRPCServer();
     await server.start();
 
-    final maxPlayers = argResults?['max-players'] != null
-        ? int.tryParse(argResults!['max-players'] as String) ?? 40
-        : 40;
     server.setInitializeRequest(
       InitializeRequest(
         modData: modData,
@@ -522,11 +543,9 @@ class StartServerCommand extends Command<int> {
                         'HeroesVersusVillains',
                   ),
                 ],
-          maxPlayers:
-              int.tryParse(
-                Platform.environment['KYBER_SERVER_MAX_PLAYERS'] ?? '',
-              ) ??
-              maxPlayers,
+          maxPlayers: maxPlayers,
+          maxSpectators: maxSpectators,
+          hostName: playerName,
           name: serverName,
         ),
       ),

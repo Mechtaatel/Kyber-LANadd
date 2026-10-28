@@ -64,16 +64,19 @@ class _MaximaLoginState extends State<MaximaLogin> {
                         builder: _buildContent,
                       ),
                       BlocBuilder<MaximaCubit, MaximaState>(
-                        builder: (context, state) => KyberButton(
-                          text: 'LAN — WITHOUT KYBER SERVICES',
-                          onPressed:
+                        builder: (context, state) {
+                          if (_loading ||
                               state.status == MaximaStatus.loading ||
-                                  state.status == MaximaStatus.starting
-                              ? null
-                              : () => context.read<MaximaCubit>().requestLogin(
-                                  lanOnly: true,
-                                ),
-                        ),
+                              state.status == MaximaStatus.starting) {
+                            return const SizedBox.shrink();
+                          }
+                          return KyberButton(
+                            text: 'LAN — WITHOUT KYBER SERVICES',
+                            onPressed: () => context
+                                .read<MaximaCubit>()
+                                .requestLogin(lanOnly: true),
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -451,8 +454,9 @@ class _MaximaGenericError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bodyStyle = FluentTheme.of(context).typography.body
-        ?.copyWith(fontSize: 16);
+    final bodyStyle = FluentTheme.of(
+      context,
+    ).typography.body?.copyWith(fontSize: 16);
 
     return DefaultTextStyle.merge(
       style: bodyStyle,

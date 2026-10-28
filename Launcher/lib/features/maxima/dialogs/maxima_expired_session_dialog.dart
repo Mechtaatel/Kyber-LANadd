@@ -17,7 +17,7 @@ class _MaximaExpiredSessionDialogState
   @override
   Widget build(BuildContext context) {
     return KyberContentDialog(
-      title: const Text('Game not owned'),
+      title: const Text('EA session expired'),
       constraints: const BoxConstraints(maxWidth: 650, maxHeight: 400),
       content: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -33,11 +33,12 @@ class _MaximaExpiredSessionDialogState
       ),
       actions: [
         KyberButton(
-          text: 'Exit Launcher',
+          text: 'Restart and sign in',
           onPressed: () async {
-            await File(
+            final authFile = File(
               '${Platform.environment['APPDATA']}\\ArmchairDevelopers\\Maxima\\data\\auth.toml',
-            ).delete();
+            );
+            if (await authFile.exists()) await authFile.delete();
 
             final executable = Platform.resolvedExecutable;
             final args = <String>['--restart'];

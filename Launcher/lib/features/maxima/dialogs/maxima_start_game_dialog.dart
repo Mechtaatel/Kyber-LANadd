@@ -150,7 +150,10 @@ class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
         message.contains('remote io error')) {
       dialog = const KyberAntiVirusExclusion();
     } else if (error is AnyhowException &&
-        message.contains('invalid redirect')) {
+        (message.contains('invalid redirect') ||
+            message.contains('HTTP 401:') ||
+            message.contains('"code":"UNAUTHENTICATED"') ||
+            message.contains('"error":"invalid_grant"'))) {
       dialog = const MaximaExpiredSessionDialog();
     } else {
       dialog = _LaunchErrorDialog(message: message);

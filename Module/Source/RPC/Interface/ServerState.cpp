@@ -27,23 +27,34 @@ ServerUnaryReactor* ServerInterfaceService::StartServer(
         return reactor;
     }
 
-    g_program->m_server->m_mapRotation.Reset();
-    for (const auto& entry : request->maprotation())
-    {
-        g_program->m_server->m_mapRotation.AddEntry(entry.map(), entry.mode());
-    }
-
     ServerCreationInfo info;
     info.name = request->name();
+    info.hostName = request->hostname();
     info.description = request->description();
     info.password = request->password();
     info.lanOnly = request->lanonly();
 
-    auto entry = g_program->m_server->m_mapRotation.GetNextEntry();
+    info.maxPlayers = request->maxplayers();
+    info.maxSpectators = request->has_maxspectators() ? request->maxspectators() : 4;
+    if (!info.HasValidCapacity())
+    {
+        reactor->Finish(Status(grpc::StatusCode::INVALID_ARGUMENT, "Players and spectators must fit within 64 slots"));
+        return reactor;
+    }
+    if (request->maprotation().empty())
+    {
+        reactor->Finish(Status(grpc::StatusCode::INVALID_ARGUMENT, "Map rotation must not be empty"));
+        return reactor;
+    }
+
+    g_program->m_server->m_mapRotation.Reset();
+    for (const auto& entry : request->maprotation())
+    {
+        g_program->m_server->m_mapRotation.AddEntry(entry.map(), entry.mode(), entry.mapname(), entry.modename());
+    }
+    const auto& entry = g_program->m_server->m_mapRotation.GetNextEntry();
     info.level = entry.level;
     info.mode = entry.mode;
-
-    info.maxPlayers = request->maxplayers();
 
     g_program->m_server->Start(info);
 

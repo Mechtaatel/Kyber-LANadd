@@ -22,6 +22,8 @@
 #include <cstdio>
 #include <thread>
 #include <cstring>
+#include <cstddef>
+#include <algorithm>
 
 #define OFFSET_SERVER_CONSTRUCTOR HOOK_OFFSET(0x140BC6370)
 #define OFFSET_SERVER_START HOOK_OFFSET(0x140BD17E0)
@@ -39,6 +41,7 @@
 #define OFFSET_SERVERCONNECTION_ONCREATEPLAYERMESSAGE HOOK_OFFSET(0x140BF33B0)
 
 #define OFFSET_SERVERPLAYERMANAGER_DELETEPLAYER HOOK_OFFSET(0x140BDD950)
+#define OFFSET_SERVERPLAYERMANAGER_CREATEPLAYER HOOK_OFFSET(0x140BDC7E0)
 
 #define OFFSET_APPLY_SETTINGS HOOK_OFFSET(0x1401B31B0)
 
@@ -46,6 +49,8 @@
 
 namespace Kyber
 {
+static_assert(offsetof(ServerPlayerManager, m_maxSpectatorCount) == 0x740);
+
 static bool IsOnlineMode()
 {
     const char* onlineMode = std::getenv("KYBER_ONLINE_MODE");
@@ -183,14 +188,14 @@ void Server::Start(const ServerCreationInfo& info, bool changeState)
     EnableGameHooks();
 
     NetworkSettings* networkSettings = Settings<NetworkSettings>("Network");
-    networkSettings->MaxClientCount = info.maxPlayers;
+    networkSettings->MaxClientCount = info.maxPlayers + info.maxSpectators;
     networkSettings->ServerPort = 25200;
     networkSettings->UseFrameManager = true;
 
     KYBER_LOG(Info, "[Server] Protocol Version " << networkSettings->ProtocolVersion << " TitleId " << networkSettings->TitleId);
 
     NetObjectSystemSettings* netObjectSettings = Settings<NetObjectSystemSettings>("NetObjectSystem");
-    netObjectSettings->MaxServerConnectionCount = info.maxPlayers;
+    netObjectSettings->MaxServerConnectionCount = info.maxPlayers + info.maxSpectators;
     // netObjectSettings->DeltaCompressionSettings.IsEnabled = false;
 
     ClientSettings* clientSettings = Settings<ClientSettings>("Client");
@@ -199,7 +204,7 @@ void Server::Start(const ServerCreationInfo& info, bool changeState)
 
     GameSettings* gameSettings = Settings<GameSettings>("Game");
     gameSettings->Level = StringUtils::CopyWithArena(info.level);
-    gameSettings->MaxSpectatorCount = 4;
+    gameSettings->MaxSpectatorCount = info.maxSpectators;
 
     char* gameMode = StringUtils::CopyWithArena("GameMode=" + info.mode);
     gameSettings->DefaultLayerInclusion = gameMode;
@@ -210,6 +215,8 @@ void Server::Start(const ServerCreationInfo& info, bool changeState)
     //serverSettings->ServerPassword = StringUtils::CopyWithArena(info.password.c_str());
 
     m_creationInfo = info;
+    m_currentLevel = info.level;
+    m_currentMode = info.mode;
 
     g_program->m_server->Register(true);
 
@@ -364,6 +371,20 @@ __int64 ServerCtorHk(void* inst, ServerSpawnInfo& info, SocketManager* socketMan
 
     g_program->m_server->m_playerManager = info.playerManager;
     g_program->m_server->m_serverInstance = inst;
+    if (g_program->m_server->m_creationInfo && info.playerManager != nullptr)
+    {
+        const auto& capacity = *g_program->m_server->m_creationInfo;
+        KYBER_LOG(Info, "[Server] Player capacity: humans=" << capacity.maxPlayers
+            << ", spectators=" << capacity.maxSpectators
+            << ", native pool=" << info.playerManager->m_maxPlayerCount
+            << ", native spectators=" << info.playerManager->m_maxSpectatorCount);
+    }
+    if (g_program->m_server->m_creationInfo && info.levelSetup.Name != nullptr)
+    {
+        g_program->m_server->m_currentLevel = info.levelSetup.Name;
+        const char* mode = info.levelSetup.GetInclusionOption("GameMode");
+        g_program->m_server->m_currentMode = mode != nullptr ? mode : "";
+    }
     KYBER_LOG(Info, "[Server] Constructing a " << info.tickFrequency << "hz server " << info.levelSetup.Name);
 
     if (g_program->m_scriptManager != nullptr)
@@ -643,6 +664,56 @@ __int64 ServerLevelUpdateLoadHk(void* inst, __int64 loadInfo)
     return result;
 }
 
+ServerPlayer* ServerPlayerManagerCreatePlayerHk(ServerPlayerManager* inst, uint8_t connectionId, const void* name,
+    LocalPlayerId localPlayerId, int playerId, bool isSpectator, bool a7)
+{
+    static const auto trampoline = HookManager::Call(ServerPlayerManagerCreatePlayerHk);
+    Server* server = g_program->m_server;
+    // Only networked human players consume the configured human slots. Leave
+    // bots, spectators and the game's local frontend on the native path.
+    if (server->IsRunning() && server->m_creationInfo && inst == server->m_playerManager &&
+        localPlayerId != LocalPlayerId_Invalid && !isSpectator)
+    {
+        const auto humans = std::count_if(inst->m_players.begin(), inst->m_players.end(), [](ServerPlayer* player) {
+            return player != nullptr && !player->IsAIPlayer() && !player->IsSpectator();
+        });
+
+        if (server->m_creationInfo->maxPlayers <= 0 || humans >= static_cast<uint32_t>(server->m_creationInfo->maxPlayers))
+        {
+            KYBER_LOG(Info, "[Server] Human player limit reached (" << humans << "/" << server->m_creationInfo->maxPlayers << ")");
+            return nullptr;
+        }
+
+        const uint32_t capacity = inst->GetGameplayCapacity();
+        if (capacity == 0)
+        {
+            return nullptr;
+        }
+        while (inst->m_players.size() >= capacity)
+        {
+            const auto bot = std::find_if(inst->m_players.begin(), inst->m_players.end(), [](ServerPlayer* player) {
+                return player != nullptr && player->IsAIPlayer();
+            });
+            if (bot == inst->m_players.end())
+            {
+                return nullptr;
+            }
+
+            // Release the native ID on the server thread, immediately before human allocation.
+            const auto previousSize = inst->m_players.size();
+            inst->DeletePlayer(*bot);
+            if (inst->m_players.size() >= previousSize)
+            {
+                KYBER_LOG(Error, "[Server] Failed to release a bot player slot");
+                return nullptr;
+            }
+            KYBER_LOG(Info, "[Server] Released a bot slot for an incoming human (" << humans << "/"
+                << server->m_creationInfo->maxPlayers << " humans)");
+        }
+    }
+    return trampoline(inst, connectionId, name, localPlayerId, playerId, isSpectator, a7);
+}
+
 bool ServerConnectionOnCreatePlayerMessageHk(ServerConnection* inst, NetworkCreatePlayerMessage* message)
 {
     static const auto trampoline = HookManager::Call(ServerConnectionOnCreatePlayerMessageHk);
@@ -866,6 +937,7 @@ HookTemplate clientServerHookOffsets[] = {
     //{ HOOK_OFFSET(0x145FEEA40), ProtoSSLUpdateRecvServerCertHk },
     { HOOK_OFFSET(0x140D4E1D0), MessageStreamAddMessageHk },
     { OFFSET_SERVERCONNECTION_ONCREATEPLAYERMESSAGE, ServerConnectionOnCreatePlayerMessageHk },
+    { OFFSET_SERVERPLAYERMANAGER_CREATEPLAYER, ServerPlayerManagerCreatePlayerHk },
     { OFFSET_SERVER_UPDATEPASSPREFRAME, ServerUpdatePassPreFrameHk },
     { OFFSET_SERVERLEVEL_UPDATELOAD, ServerLevelUpdateLoadHk },
     { HOOK_OFFSET(0x140BCF350), ServerLoadLevelMessagePostHk },
@@ -884,6 +956,7 @@ HookTemplate dedicatedServerHookOffsets[] = {
     { HOOK_OFFSET(0x140D4E1D0), MessageStreamAddMessageHk },
     { HOOK_OFFSET(0x1418D3380), CreatePresenceBackendHk },
     { OFFSET_SERVERCONNECTION_ONCREATEPLAYERMESSAGE, ServerConnectionOnCreatePlayerMessageHk },
+    { OFFSET_SERVERPLAYERMANAGER_CREATEPLAYER, ServerPlayerManagerCreatePlayerHk },
     { OFFSET_SERVER_UPDATEPASSPREFRAME, ServerUpdatePassPreFrameHk },
     { HOOK_OFFSET(0x140BCF350), ServerLoadLevelMessagePostHk },
     { HOOK_OFFSET(0x14193DA20), ServerSendChatMessageHk },

@@ -148,6 +148,9 @@ message StartServerRequest {
   bool proximityChat = 6;
   // Host locally without registration, proxies or Kyber authentication.
   bool lanOnly = 7;
+  // Separate spectator slots; absent on older launchers (legacy default: 4).
+  optional uint32 maxSpectators = 8;
+  string hostName = 9;
 }
 
 message LoadLevelRequest {
@@ -172,6 +175,8 @@ message ServerState {
   kyber_common.LevelSetup levelSetup = 2;
   uint32 mapRotationIndex = 3;
   repeated kyber_common.ServerPlayer playerList = 4;
+  // Same metadata as LAN discovery, also available through local RPC.
+  kyber_api.Server browserInfo = 5;
 }
 
 message SetProxyListRequest {

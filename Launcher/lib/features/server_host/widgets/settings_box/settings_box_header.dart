@@ -12,6 +12,7 @@ import 'package:kyber_launcher/features/map_rotation/models/map_rotation_entry.d
 import 'package:kyber_launcher/features/map_rotation/providers/map_rotation_cubit.dart';
 import 'package:kyber_launcher/features/maxima/helper/maxima_helper.dart';
 import 'package:kyber_launcher/features/maxima/models/maxima_game_instance.dart';
+import 'package:kyber_launcher/features/maxima/providers/maxima_cubit.dart';
 import 'package:kyber_launcher/features/mods/services/level_declaration_service.dart';
 import 'package:kyber_launcher/features/server_host/providers/host_collection_cubit.dart';
 import 'package:kyber_launcher/features/server_host/widgets/settings_box/server_settings_box.dart';
@@ -228,6 +229,22 @@ class SettingsBoxHeader extends StatelessWidget {
 
                           final lanOnly =
                               form.value['lanOnly'] as bool? ?? true;
+                          final hostName = context
+                              .read<MaximaCubit>()
+                              .getUsername();
+                          final maxPlayers = form.value['maxPlayers'] as int;
+                          final maxSpectators =
+                              form.value['maxSpectators'] as int;
+                          if (maxPlayers < 2 ||
+                              maxSpectators < 0 ||
+                              maxPlayers + maxSpectators > 64) {
+                            NotificationService.error(
+                              message:
+                                  'Players and spectators share 64 slots. '
+                                  'Choose their limits without exceeding this total.',
+                            );
+                            return;
+                          }
                           if (!lanOnly && LanMode.enabled) {
                             NotificationService.error(
                               message:
@@ -309,7 +326,9 @@ class SettingsBoxHeader extends StatelessWidget {
                               name: form.value['serverName'] as String,
                               description: form.value['description'] as String?,
                               password: form.value['password'] as String?,
-                              maxPlayers: form.value['maxPlayers'] as int?,
+                              maxPlayers: maxPlayers,
+                              maxSpectators: maxSpectators,
+                              hostName: hostName,
                               mapRotation: mapRotation,
                             );
 

@@ -26,11 +26,19 @@ struct ServerCreationInfo
     std::string name;
     std::string description;
     std::string password;
+    std::string hostName;
 
     std::string level;
     std::string mode;
     int maxPlayers;
+    int maxSpectators = 4;
     bool lanOnly = false;
+
+    static constexpr int MaxSlots = 64;
+    bool HasValidCapacity() const
+    {
+        return maxPlayers >= 1 && maxPlayers <= MaxSlots && maxSpectators >= 0 && maxSpectators <= MaxSlots - maxPlayers;
+    }
 
     // Commands executed on server load
     std::vector<std::string> loadCommands;
@@ -95,6 +103,7 @@ public:
 
     void Heartbeat(const UpdateParameters& params);
     void PollLanDiscovery();
+    void FillBrowserInfo(kyber_api::Server& info) const;
     void CloseLanDiscovery();
     void Register(bool force = false, bool reuseId = false);
 

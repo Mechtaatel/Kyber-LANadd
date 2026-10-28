@@ -249,6 +249,10 @@ class Customization {
 }
 
 class HostServer {
+  bool get lanOnly => box.get('hostLanOnly', defaultValue: false) as bool;
+
+  set lanOnly(bool value) => box.put('hostLanOnly', value);
+
   String get name => box.get('hostName', defaultValue: '') as String;
 
   set name(String value) => box.put('hostName', value);

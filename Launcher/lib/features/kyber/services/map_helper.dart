@@ -5,6 +5,24 @@ import 'package:kyber_launcher/features/map_rotation/services/custom_rotation_se
 import 'package:kyber_launcher/gen/assets.gen.dart';
 
 class MapHelper {
+  static Map<String, String> getServerMap(Server server) {
+    final level = server.levelSetup;
+    final modeMap = getMode(level.mode)?.mapOverrides?.firstWhereOrNull(
+      (entry) => entry.map.toLowerCase() == level.map.toLowerCase(),
+    );
+    final knownMap = KyberMapService.maps.firstWhereOrNull(
+      (entry) => entry['map']?.toLowerCase() == level.map.toLowerCase(),
+    );
+    return {
+      'map': level.map,
+      'name': level.mapName.isNotEmpty
+          ? level.mapName
+          : modeMap?.name ??
+                knownMap?['name'] ??
+                (level.map.isEmpty ? 'Loading map' : level.map),
+    };
+  }
+
   static KyberMap? getMap(String mode, String map) {
     final kMap = getMapsForMode(mode).where((x) => x.map == map).firstOrNull;
     /*if (kMap == null) {
@@ -29,7 +47,8 @@ class MapHelper {
     }
 
     final image = Assets.images.maps.values.firstWhereOrNull(
-      (x) => x.path.contains(map.replaceAll('/', '-')),
+      (x) =>
+          x.path.toLowerCase().contains(map.replaceAll('/', '-').toLowerCase()),
     );
     if (image != null) {
       return image;

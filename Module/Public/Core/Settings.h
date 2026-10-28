@@ -11,13 +11,18 @@ namespace Kyber
 {
 struct MapRotationEntry
 {
-    MapRotationEntry(const std::string& level, const std::string& mode)
+    MapRotationEntry(const std::string& level, const std::string& mode,
+        const std::string& mapName = "", const std::string& modeName = "")
         : level(level)
         , mode(mode)
+        , mapName(mapName)
+        , modeName(modeName)
     {}
 
     std::string level;
     std::string mode;
+    std::string mapName;
+    std::string modeName;
 };
 
 class MapRotation
@@ -54,9 +59,10 @@ public:
         m_current = 0;
     }
 
-    void AddEntry(const std::string& level, const std::string& mode)
+    void AddEntry(const std::string& level, const std::string& mode,
+        const std::string& mapName = "", const std::string& modeName = "")
     {
-        m_entries.emplace_back(level, mode);
+        m_entries.emplace_back(level, mode, mapName, modeName);
     }
 
     void RemoveNextEntry()

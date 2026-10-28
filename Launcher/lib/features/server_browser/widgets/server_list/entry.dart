@@ -6,9 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:kyber/kyber.dart';
 import 'package:kyber_launcher/core/config/colors.dart';
-import 'package:kyber_launcher/features/kyber/models/maps.dart';
 import 'package:kyber_launcher/features/kyber/models/mode.dart';
-import 'package:kyber_launcher/features/kyber/models/modes.dart';
 import 'package:kyber_launcher/features/kyber/services/map_helper.dart';
 import 'package:kyber_launcher/features/maxima/providers/maxima_rtm_cubit.dart';
 import 'package:kyber_launcher/features/server_browser/helpers/server_browser_helper.dart';
@@ -50,23 +48,15 @@ class ServerListEntry extends StatelessWidget {
     required Server server,
     Key? key,
   }) {
-    final mode =
-        modes
-            .where((element) => element.mode == server.levelSetup.mode)
-            .firstOrNull ??
-        Mode.customMode();
-    final dynamic map = mode.maps.isEmpty
-        ? maps.first
-        : maps.singleWhere(
-            (element) => element['map'] == server.levelSetup.map,
-          );
+    final mode = MapHelper.getMode(server.levelSetup.mode) ?? Mode.customMode();
+    final map = MapHelper.getServerMap(server);
 
     return ServerListEntry(
       key: key,
       index: -1,
       hoveredIndex: hoveredIndex,
       onHover: onHover,
-      map: Map<dynamic, String>.from(map as Map<dynamic, dynamic>),
+      map: map,
       mode: mode,
       server: SingleServer(server: server),
     );
@@ -161,7 +151,7 @@ class ServerListEntry extends StatelessWidget {
                           }
 
                           return MapHelper.getImageForMap(
-                            map['map'] as String,
+                            serverInfo.levelSetup.map,
                           )!.image(
                             fit: BoxFit.cover,
                             alignment: Alignment.centerLeft,

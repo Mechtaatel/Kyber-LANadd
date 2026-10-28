@@ -27,7 +27,6 @@ class ServerSettings extends StatelessWidget {
                 },
                 builder: (hovered) => FormBuilderField<bool>(
                   name: 'lanOnly',
-                  initialValue: false,
                   builder: (field) => KyberTableSwitch(
                     value: field.value ?? false,
                     hover: hovered,
@@ -46,17 +45,7 @@ class ServerSettings extends StatelessWidget {
                         min: 2,
                         max: 64,
                         value: field.value!,
-                        onChanged: (value) {
-                          field.didChange(value);
-                          final maxPlayersField = hostingForm
-                              .currentState!
-                              .fields['maxSpectators']!;
-                          final maxPlayers = maxPlayersField.value as int;
-                          if (maxPlayers + value > 64) {
-                            hostingForm.currentState!.fields['maxSpectators']!
-                                .setValue(64 - value);
-                          }
-                        },
+                        onChanged: field.didChange,
                       );
                     },
                   );
@@ -73,16 +62,7 @@ class ServerSettings extends StatelessWidget {
                         min: 0,
                         max: 62,
                         value: field.value!,
-                        onChanged: (value) {
-                          field.didChange(value);
-                          final maxPlayersField =
-                              hostingForm.currentState!.fields['maxPlayers']!;
-                          final maxPlayers = maxPlayersField.value as int;
-                          if (maxPlayers + value > 64) {
-                            hostingForm.currentState!.fields['maxPlayers']!
-                                .setValue(64 - value);
-                          }
-                        },
+                        onChanged: field.didChange,
                       );
                     },
                   );

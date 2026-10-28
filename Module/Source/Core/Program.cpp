@@ -597,14 +597,15 @@ void GameSimulationInitDedicatedServerHk(void* inst, void* createInfo)
         DirtySockSocketManager_ctor(g_program->m_server->m_socketManager, FB_STATIC_ARENA, 1168);
     }
 
+    const ServerCreationInfo& capacity = *g_program->m_server->m_creationInfo;
     NetworkSettings* networkSettings = Settings<NetworkSettings>("Network");
-    networkSettings->MaxClientCount = 64;
+    networkSettings->MaxClientCount = capacity.maxPlayers + capacity.maxSpectators;
 
     GameSettings* gameSettings = Settings<GameSettings>("Game");
-    gameSettings->MaxSpectatorCount = 4;
+    gameSettings->MaxSpectatorCount = capacity.maxSpectators;
 
     NetObjectSystemSettings* netObjectSettings = Settings<NetObjectSystemSettings>("NetObjectSystem");
-    netObjectSettings->MaxServerConnectionCount = 64;
+    netObjectSettings->MaxServerConnectionCount = capacity.maxPlayers + capacity.maxSpectators;
     // netObjectSettings->DeltaCompressionSettings.IsEnabled = false;
 
     if (g_program->m_server->m_onlineMode)

@@ -1,11 +1,9 @@
-import 'package:collection/collection.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_fadein/flutter_fadein.dart';
 import 'package:kyber/kyber.dart';
-import 'package:kyber_launcher/features/kyber/models/maps.dart';
 import 'package:kyber_launcher/features/kyber/models/mode.dart';
-import 'package:kyber_launcher/features/kyber/models/modes.dart';
+import 'package:kyber_launcher/features/kyber/services/map_helper.dart';
 import 'package:kyber_launcher/features/server_browser/models/server_list_state.dart';
 import 'package:kyber_launcher/features/server_browser/providers/server_list_cubit.dart';
 import 'package:kyber_launcher/features/server_browser/widgets/server_list/entry.dart';
@@ -82,20 +80,9 @@ class _TableServerListState extends State<TableServerList> {
                   final server = servers[index];
                   final serverInfo = server.serverInfo;
                   final mode =
-                      modes
-                          .where(
-                            (element) =>
-                                element.mode == serverInfo.levelSetup.mode,
-                          )
-                          .firstOrNull ??
+                      MapHelper.getMode(serverInfo.levelSetup.mode) ??
                       Mode.customMode();
-                  final map = mode.maps.isEmpty
-                      ? maps.first
-                      : maps.firstWhereOrNull(
-                              (element) =>
-                                  element['map'] == serverInfo.levelSetup.map,
-                            ) ??
-                            maps.first;
+                  final map = MapHelper.getServerMap(serverInfo);
 
                   return ServerListEntry(
                     server: server,

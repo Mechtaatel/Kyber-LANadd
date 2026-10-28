@@ -75,13 +75,19 @@ class ModerationServersCubit extends Cubit<ModerationServersState> {
         return null;
       }
 
+      if (info.server.hasBrowserInfo()) {
+        return info.server.browserInfo..ip = '127.0.0.1';
+      }
+
       // Discovery gives us the actual name, port and mod list. The local RPC
       // still lets HOST show its own server while the responder is starting.
       final discovered = await LanDiscovery().discover(
         timeout: const Duration(milliseconds: 600),
       );
       for (final server in discovered) {
-        if (server.isLanOnly && server.ip == '127.0.0.1') {
+        if (server.isLanOnly &&
+            server.ip == '127.0.0.1' &&
+            server.id == info.server.id) {
           server
             ..id = info.server.id
             ..playerCount = info.server.playerList.length;

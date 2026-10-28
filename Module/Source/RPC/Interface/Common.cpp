@@ -24,19 +24,20 @@ ServerUnaryReactor* CommonInterfaceService::GetInfo(
 {
     ServerUnaryReactor* reactor = context->DefaultReactor();
 
-    if (g_program->m_server->IsRunning() && g_program->m_server->m_serverInstance != nullptr)
+    if (g_program->m_server->IsRunning() && g_program->m_server->m_serverInstance != nullptr &&
+        g_program->m_server->m_playerManager != nullptr)
     {
         kyber_interface::ServerState* server = response->mutable_server();
         server->set_id(g_program->m_server->m_serverId);
 
-        server->mutable_levelsetup()->set_map(g_program->m_server->m_currentLevel);
-        server->mutable_levelsetup()->set_mode(g_program->m_server->m_currentMode);
+        g_program->m_server->FillBrowserInfo(*server->mutable_browserinfo());
+        server->mutable_levelsetup()->CopyFrom(server->browserinfo().levelsetup());
 
         server->set_maprotationindex(0);
 
         for (ServerPlayer* player : g_program->m_server->m_playerManager->m_players)
         {
-            if (player->IsAIPlayer())
+            if (player == nullptr || player->IsAIPlayer())
             {
                 continue;
             }

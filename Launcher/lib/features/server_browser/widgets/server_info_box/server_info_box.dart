@@ -203,13 +203,7 @@ class _ServerInfoBoxState extends State<ServerInfoBox> {
         : MapHelper.getMode(serverInfo.levelSetup.mode)?.name ??
               serverInfo.levelSetup.mode;
 
-    final mapName = serverInfo.levelSetup.mapName.isNotEmpty
-        ? serverInfo.levelSetup.mapName
-        : MapHelper.getMap(
-                serverInfo.levelSetup.mode,
-                serverInfo.levelSetup.map,
-              )?.name ??
-              serverInfo.levelSetup.map;
+    final mapName = MapHelper.getServerMap(serverInfo)['name']!;
 
     final instances = _instances;
     final regions = _regions;

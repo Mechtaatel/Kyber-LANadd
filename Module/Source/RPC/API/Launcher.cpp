@@ -62,14 +62,9 @@ void LauncherInterface::Initialize() const
     case kyber_interface::InitializeRequest::kStartServer: {
         const auto& server = request.startserver();
 
-        g_program->m_server->m_mapRotation.Reset();
-        for (const auto& entry : server.maprotation())
-        {
-            g_program->m_server->m_mapRotation.AddEntry(entry.map(), entry.mode());
-        }
-
         ServerCreationInfo info;
         info.name = server.name();
+        info.hostName = server.hostname();
         info.description = server.description();
         info.password = server.password();
         info.lanOnly = server.lanonly();
@@ -80,11 +75,26 @@ void LauncherInterface::Initialize() const
         }
         g_program->m_server->m_onlineMode = !info.lanOnly;
 
-        auto entry = g_program->m_server->m_mapRotation.GetNextEntry();
+        info.maxPlayers = server.maxplayers();
+        info.maxSpectators = server.has_maxspectators() ? server.maxspectators() : 4;
+        if (!info.HasValidCapacity())
+        {
+            KYBER_LOG(Error, "[Server] Players and spectators must fit within 64 slots");
+            return;
+        }
+        if (server.maprotation().empty())
+        {
+            KYBER_LOG(Error, "[Server] Map rotation must not be empty");
+            return;
+        }
+        g_program->m_server->m_mapRotation.Reset();
+        for (const auto& entry : server.maprotation())
+        {
+            g_program->m_server->m_mapRotation.AddEntry(entry.map(), entry.mode(), entry.mapname(), entry.modename());
+        }
+        const auto& entry = g_program->m_server->m_mapRotation.GetNextEntry();
         info.level = entry.level;
         info.mode = entry.mode;
-
-        info.maxPlayers = server.maxplayers();
 
         info.loadCommands.reserve(request.startupcommands_size());
         for (const auto& command : request.startupcommands())

@@ -1492,6 +1492,16 @@ public:
     char pad_001C[172];                                  // 0x001C
     eastl::fixed_vector<ServerPlayer*, 64> m_players;    // 0x00C8
     eastl::fixed_vector<ServerPlayer*, 64> m_spectators; // 0x02F0
+    char pad_0518[0x228];                              // 0x0518
+    uint32_t m_maxSpectatorCount;                       // 0x0740
+
+    // The native allocator reserves spectator IDs in the shared player pool.
+    uint32_t GetGameplayCapacity() const
+    {
+        return m_maxPlayerCount > m_maxSpectatorCount ? m_maxPlayerCount - m_maxSpectatorCount : 0;
+    }
+
+    KB_DECLARE_GAMEMEMBERFUNC(0x140BDD950, void, DeletePlayer, (player), ServerPlayer* player)
 
     ServerPlayer* GetPlayerOrSpectator(uint64_t id);
     ServerPlayer* GetPlayerOrSpectator(const char* name);
