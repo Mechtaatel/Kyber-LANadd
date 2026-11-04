@@ -29,3 +29,6 @@ __pycache__/
 
 # Sentry native cache and session data are local runtime artifacts.
 .sentry-native/
+logs_????-??-??_*.zip
+*.pdb
+*.ilk

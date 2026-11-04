@@ -1,4 +1,4 @@
-#define MyAppName "KYBER Launcher LAN ADD"
+#define MyAppName "KYBER Launcher LANadd"
 #ifndef MyAppVersion
   #define VersionFile FileOpen("..\assets\lan_add_version.txt")
   #define MyAppVersion Trim(FileRead(VersionFile))
@@ -28,7 +28,7 @@
 AppId={#AppId}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
-AppVerName={#MyAppName} {#MyAppVersion}
+AppVerName={#MyAppName} {#StringChange(MyAppVersion, ".0-beta", "-beta")}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
