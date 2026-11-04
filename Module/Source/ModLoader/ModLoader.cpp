@@ -670,15 +670,13 @@ void ResourceManagerUpdateResourcesHk(void* inst, bool newTick, bool forced)
     static auto trampoline = HookManager::Call(ResourceManagerUpdateResourcesHk);
     trampoline(inst, newTick, forced);
 
-    static bool isRunningDeferredHandlers = false;
-    if (isRunningDeferredHandlers)
-    {
-        return;
-    }
-
-    isRunningDeferredHandlers = true;
-
     auto& queue = g_modLoader->m_deferredContainerCreationQueue;
+    // A forced update inside either handler stage must not start PostLoad.
+    for (const auto& job : queue)
+    {
+        if (job.processing)
+            return;
+    }
     for (auto it = queue.begin(); it != queue.end();)
     {
         ContainerCreationInfo& info = *it;
@@ -694,7 +692,6 @@ void ResourceManagerUpdateResourcesHk(void* inst, bool newTick, bool forced)
         it = queue.erase(it);
     }
 
-    isRunningDeferredHandlers = false;
 }
 
 struct BundleLoadInfo
