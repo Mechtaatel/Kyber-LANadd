@@ -84,9 +84,18 @@ class CustomLogger {
     if (_logExportInProgress) return;
     _logExportInProgress = true;
     try {
-      Directory? downloads;
+      String? initialDirectory;
       try {
-        downloads = await getDownloadsDirectory();
+        final savedDirectory = Preferences.general.lastLogExportDirectory;
+        if (savedDirectory != null &&
+            await Directory(savedDirectory).exists()) {
+          initialDirectory = savedDirectory;
+        }
+      } on FileSystemException catch (_) {
+        // A previously selected drive or network share may be unavailable.
+      }
+      try {
+        initialDirectory ??= (await getDownloadsDirectory())?.path;
       } catch (_) {
         // The native save dialog can still work without this optional location.
       }
@@ -94,7 +103,7 @@ class CustomLogger {
           'logs_${DateTime.now().toString().split('.').first.replaceAll(':', '-').replaceAll(' ', '_')}.zip';
       final file = await getSaveLocation(
         suggestedName: name,
-        initialDirectory: downloads?.path,
+        initialDirectory: initialDirectory,
         acceptedTypeGroups: const [
           XTypeGroup(label: 'Zip-Archive', extensions: ['zip']),
         ],
@@ -139,6 +148,17 @@ class CustomLogger {
         ),
       );
       final warnings = await compute(createLogArchive, request);
+      try {
+        await Preferences.general.saveLogExportDirectory(dirname(outputPath));
+      } catch (error, stack) {
+        // The archive is already saved; a settings error must not report it as
+        // a failed export.
+        Logger('log_export').warning(
+          'Could not remember the log export directory',
+          error,
+          stack,
+        );
+      }
       if (warnings.isEmpty) {
         NotificationService.success(message: 'Logs exported to $outputPath');
       } else {

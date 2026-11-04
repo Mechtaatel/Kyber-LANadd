@@ -83,6 +83,9 @@ class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
         setState(() => updating = false);
       }
       final req = widget.initializeRequest ?? .new();
+      // An empty user selection stays empty even if Kyber adds automatic mods.
+      final selectedMods =
+          widget.mods ?? (req.modData.modPaths.isEmpty ? <FrostyMod>[] : null);
       if (!lanOnly && Preferences.general.enabledPreloadMods) {
         setState(() => preloadingMods = true);
         final preloadedMods = await PreloadedModsHelper.preloadMods();
@@ -100,7 +103,7 @@ class _MaximaStartGameDialogState extends State<MaximaStartGameDialog> {
       final instance = await MaximaHelper.startGame(
         gameDataPath: widget.gameDataDir,
         initializeRequest: req,
-        mods: widget.mods,
+        mods: selectedMods,
       );
       if (!_isActive) return;
       _gameEvents = instance.eventStream.listen(

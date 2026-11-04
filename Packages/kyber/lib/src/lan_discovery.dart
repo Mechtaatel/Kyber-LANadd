@@ -32,6 +32,9 @@ extension LanServer on Server {
   bool get isLan => region == 'LAN';
   bool get isLanOnly => isLan && meta['lan_only'] == '1';
 
+  /// Public identity retained separately from an address-based offline join ID.
+  String get browserServerId => isLan ? meta['lan_server_id'] ?? id : id;
+
   int browserPriority({required bool friend}) => official
       ? 0
       : isLan
@@ -102,14 +105,19 @@ class LanDiscovery {
 
   /// Preserve authenticated public metadata, but prefer a fresh direct route.
   static Server preferLan(Server online, Server local) {
-    if (online.id != local.id || !local.isLan || local.isLanOnly) return online;
+    if (online.id != local.browserServerId || !local.isLan) return online;
+    // A password-protected public listing cannot acquire an unauthenticated
+    // route from a discovery reply.
+    if (local.isLanOnly && online.requiresPassword) return online;
     final merged = Server.fromBuffer(online.writeToBuffer())
+      ..id = local.id
       ..ip = local.ip
       ..port = local.port
       ..region = 'LAN'
       ..requiresProxy = false;
     merged.meta.remove('persisted_id');
-    merged.meta['lan_only'] = '0';
+    merged.meta['lan_only'] = local.isLanOnly ? '1' : '0';
+    merged.meta['lan_server_id'] = online.id;
     return merged;
   }
 
@@ -172,6 +180,7 @@ class LanDiscovery {
                   ..requiresProxy = false;
                 server.meta.clear();
                 server.meta['lan_only'] = offline ? '1' : '0';
+                server.meta['lan_server_id'] = server.id;
                 final key = offline ? '${server.ip}:${server.port}' : server.id;
                 if (offline) server.id = 'lan:$key';
                 servers[key] = server;

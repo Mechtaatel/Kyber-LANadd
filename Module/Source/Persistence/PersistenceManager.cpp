@@ -9,6 +9,7 @@
 #include <Core/Console.h>
 #include <Utilities/MemoryUtils.h>
 #include <SDK/SDK.h>
+#include <Network/LanJoin.h>
 
 #include <ToolLib/Func.h>
 
@@ -228,6 +229,11 @@ PersistenceManager::PersistenceManager()
 
 void PersistenceManager::LoadPlayerStats(void* persistenceInst, ServerPlayer* player)
 {
+    if (IsIndependentLanPlayer(player->m_onlineId.m_nativeData))
+    {
+        ApplyPlayerStats(persistenceInst, player, {});
+        return;
+    }
     m_database->Load(player->m_onlineId, [persistenceInst, player](PlayerStatsMap stats) {
         KYBER_LOG(Info, "[Persistence] Persistence loaded, applying...");
         ApplyPlayerStats(persistenceInst, player, stats);
@@ -246,6 +252,7 @@ void PersistenceManager::SavePlayerStats(ServerPlayer* player)
 
 void PersistenceManager::SavePlayerStats(ServerPlayer* player, const PlayerStatsMap& stats)
 {
+    if (IsIndependentLanPlayer(player->m_onlineId.m_nativeData)) return;
     m_database->Save(player->m_onlineId, stats);
 }
 

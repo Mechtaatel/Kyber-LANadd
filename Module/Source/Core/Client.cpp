@@ -3,6 +3,7 @@
 #include <Core/Client.h>
 
 #include <Core/Program.h>
+#include <Core/ThreadExecutor.h>
 #include <Hook/HookManager.h>
 #include <Base/Log.h>
 #include <Utilities/MemoryUtils.h>
@@ -11,9 +12,24 @@
 #include <SDK/Funcs.h>
 
 #include <optional>
+#include <cstring>
 
 namespace Kyber
 {
+
+// The level's old list head can outlive its arena after a failed join.
+// Drop it only if Windows confirms that the allocation is gone.
+static bool DropReleasedListHead(void* volatile* slot)
+{
+    void* head = InterlockedCompareExchangePointer(slot, nullptr, nullptr);
+    MEMORY_BASIC_INFORMATION region{};
+    if (!head || !VirtualQuery(head, &region, sizeof(region)) ||
+        (region.State != MEM_RESERVE && region.State != MEM_FREE))
+    {
+        return false;
+    }
+    return InterlockedCompareExchangePointer(slot, nullptr, head) == head;
+}
 
 Client::Client()
     : m_joining(false)
@@ -78,9 +94,9 @@ void Client::AttemptJoinVoip()
         });
 }
 
-void Client::JoinServer(const std::string& id, std::string ip, uint16_t port, bool spectate, bool proxied, bool changeState)
+void Client::JoinServer(const std::string& id, std::string ip, uint16_t port, bool spectate, bool proxied, bool changeState,
+    std::optional<std::string> joinToken)
 {
-    g_program->m_server->m_onlineMode = !id.empty();
     if (!id.empty())
     {
         auto server = g_program->GetAPI()->GetServerBrowser()->GetServer(id);
@@ -107,21 +123,37 @@ void Client::JoinServer(const std::string& id, std::string ip, uint16_t port, bo
         }
     }
 
-    ClientSettings* clientSettings = Settings<ClientSettings>("Client");
-    clientSettings->ServerIp = StringUtils::CopyWithArena(ip);
+    // RPC callers resolve the route on their worker thread. Only the client
+    // thread may change engine settings/state and tear down the current level.
+    // Own all request data: the RPC may finish before this callback runs.
+    auto join = [this, id, ip, port, spectate, proxied, changeState, joinToken = std::move(joinToken)]() {
+        if (joinToken)
+        {
+            m_joinToken = *joinToken;
+        }
+        g_program->m_server->m_onlineMode = !id.empty();
+        Settings<ClientSettings>("Client")->ServerIp = StringUtils::CopyWithArena(ip);
+        g_program->m_server->m_socketSpawnInfo =
+            SocketSpawnInfo(proxied, proxied ? ip : "", id.empty() ? "lan:" + ip + ":" + std::to_string(port) : id, "");
+        m_joining = true;
+        m_spectator = spectate;
+        Settings<NetworkSettings>("Network")->ServerPort = port;
 
-    SocketSpawnInfo info(proxied, proxied ? ip : "", id.empty() ? "lan:" + ip + ":" + std::to_string(port) : id, "");
-    g_program->m_server->m_socketSpawnInfo = info;
-    m_joining = true;
-    m_spectator = spectate;
-
-    KYBER_LOG(Info, "[Client] Joining server " << id << " at " << ip << ":" << port << " [Proxied: " << proxied
-                                               << ", Spectate: " << spectate << ", ChangeState: " << changeState << "]");
-
-    Settings<NetworkSettings>("Network")->ServerPort = port;
+        KYBER_LOG(Info, "[Client] Joining server " << id << " at " << ip << ":" << port << " [Proxied: " << proxied
+                                                   << ", Spectate: " << spectate << ", ChangeState: " << changeState << "]");
+        if (changeState)
+        {
+            ChangeClientState(ClientState_Startup);
+        }
+    };
     if (changeState)
     {
-        ChangeClientState(ClientState_Startup);
+        g_threadExecutor->Queue(GameThread_Client, std::move(join));
+    }
+    else
+    {
+        // Initial launch already runs from the client's main-loop event.
+        join();
     }
 }
 
@@ -215,6 +247,18 @@ __int64 ClientStateChangeHk(__int64 inst, ClientState currentClientState, Client
 
         firstStartup = false;
     }
+    else if (currentClientState == ClientState_LevelLinked && !g_program->m_isDedicatedServer &&
+        !server->m_runningHosted && !g_program->m_client->m_joining && !g_program->m_client->m_connected)
+    {
+        // Only the local frontend. Validate the build-specific list insertion
+        // instructions before touching the matching owner's head field.
+        const uint8_t insertion[] = { 0x48, 0x8B, 0x43, 0x78, 0x48, 0x85, 0xC0, 0x74, 0x08, 0x48, 0x89, 0x78, 0x68 };
+        if (std::memcmp(HOOK_OFFSET(0x1474D9E2B), insertion, sizeof(insertion)) == 0 &&
+            DropReleasedListHead(reinterpret_cast<void* volatile*>(0x143FCB4A0 + 0x78)))
+        {
+            KYBER_LOG(Warning, "[Client] Removed released level list head before frontend synchronization");
+        }
+    }
     else if (currentClientState == ClientState_Ingame)
     {
         // The local frontend also reaches Ingame after a disconnect. It is not
@@ -269,6 +313,19 @@ void ClientConnectionOnDisconnectedHk(__int64 inst)
     }
 
     KYBER_LOG(Info, "[Client] Disconnected from server: " << std::hex << reason << " " << reasonText);
+
+    auto* client = g_program->m_client;
+    auto* server = g_program->m_server;
+    // Startup may be leaving an old connection for an explicit new join.
+    // Otherwise, discard the failed route before the game loads its frontend.
+    if (!client->m_joining && !server->m_runningHosted && !g_program->m_isDedicatedServer)
+    {
+        client->m_connected = false;
+        client->m_spectator = false;
+        client->m_joinToken.clear();
+        Settings<ClientSettings>("Client")->ServerIp = StringUtils::CopyWithArena("");
+        server->m_socketSpawnInfo = SocketSpawnInfo();
+    }
 
     g_program->GetAPI()->GetLauncherInterface()->OnServerDisconnect();
 

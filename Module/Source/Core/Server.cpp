@@ -3,6 +3,7 @@
 #include <Core/Server.h>
 
 #include <Core/Program.h>
+#include <Network/LanJoin.h>
 #include <Hook/HookManager.h>
 #include <Base/Log.h>
 #include <Utilities/MemoryUtils.h>
@@ -355,7 +356,8 @@ __int64 ServerCtorHk(void* inst, ServerSpawnInfo& info, SocketManager* socketMan
 {
     static const auto trampoline = HookManager::Call(ServerCtorHk);
 
-    if (g_program->m_server->m_hooksRemoved)
+    if (g_program->m_server->m_hooksRemoved ||
+        (!g_program->m_server->m_runningHosted && !g_program->m_isDedicatedServer))
     {
         return trampoline(inst, info, socketManager);
     }
@@ -402,7 +404,7 @@ __int64 ServerStartHk(__int64 inst, ServerSpawnInfo& info, __int64 spawnOverride
 
     KYBER_LOG(Info, "[Server] Starting server " << info.levelSetup.Name << " (Hooked: " << !server->m_hooksRemoved << ")");
 
-    if (server->m_hooksRemoved)
+    if (server->m_hooksRemoved || (!server->m_runningHosted && !g_program->m_isDedicatedServer))
     {
         return trampoline(inst, info, spawnOverrides, socketManager);
     }
@@ -599,6 +601,10 @@ void* CreatePresenceBackendHk(__int64* a1, __int64 a2, int backend, __int64 a4, 
 
 SocketManager* GetSocketManagerHk(void* inst)
 {
+    if (!g_program->m_server->m_runningHosted && !g_program->m_isDedicatedServer)
+    {
+        return HookManager::Call(GetSocketManagerHk)(inst);
+    }
     g_program->m_server->m_socketManager->m_info = g_program->m_server->m_socketSpawnInfo;
     return g_program->m_server->m_socketManager;
 }
@@ -722,16 +728,62 @@ bool ServerConnectionOnCreatePlayerMessageHk(ServerConnection* inst, NetworkCrea
         return trampoline(inst, message);
     }
 
+    const std::string wireName = message->playerName ? message->playerName : "";
+    if (wireName.rfind("KyberAuthentication:", 0) != 0 &&
+        (IndependentLanEnabled() || !g_program->m_server->m_onlineMode))
+    {
+        const auto& creation = g_program->m_server->m_creationInfo;
+        if (!creation || !creation->password.empty() || !IsLanJoinName(wireName))
+        {
+            inst->SafeDisconnect("Independent LAN admission is unavailable or malformed.");
+            return false;
+        }
+        const auto userId = CreateLanPlayerId();
+        if (!userId)
+        {
+            inst->SafeDisconnect("Could not initialize the LAN player session. Please reconnect.");
+            return false;
+        }
+
+        auto* copiedMessage = MemoryUtils::Copy(FB_SERVER_ARENA, message);
+        copiedMessage->playerName = StringUtils::CopyWithArena(wireName, FB_SERVER_ARENA);
+        const bool result = trampoline(inst, copiedMessage);
+        auto* player = inst->GetPlayer();
+        if (!result || !player)
+        {
+            FB_SERVER_ARENA->free(copiedMessage->playerName);
+            FB_SERVER_ARENA->free(copiedMessage);
+            return false;
+        }
+
+        // LAN guests have a server-assigned session identity, not an account ID.
+        player->m_onlineId.m_nativeData = *userId;
+        strncpy(player->m_onlineId.m_id, player->m_name, sizeof(OnlineId::m_id) - 1);
+        player->m_onlineId.m_id[sizeof(OnlineId::m_id) - 1] = '\0';
+        g_program->m_server->InitializePlayer(player);
+        if (g_program->m_scriptManager)
+            g_program->m_scriptManager->GetEventManager().Fire("ServerPlayer:Joined", player);
+        auto* joined = new ServerPlayerAuthenticatedEvent();
+        joined->connection = inst;
+        joined->groupId = 0;
+        g_program->m_server->m_eventManager->QueueEvent(joined);
+        if (g_program->m_server->m_onlineMode) g_program->GetAPI()->GetServerManagement()->SendPlayerList();
+        KYBER_LOG(Info, "[Server] Independent LAN player admitted: " << wireName << " (" << *userId << "); without Kyber authentication");
+        FB_SERVER_ARENA->free(copiedMessage->playerName);
+        FB_SERVER_ARENA->free(copiedMessage);
+        return result;
+    }
+
     if (!g_program->m_server->m_onlineMode)
     {
-        KYBER_LOG(Info, "[Server] " << message->playerName << " joined (Spectator: " << message->isSpectator << ")");
-        return trampoline(inst, message);
+        inst->SafeDisconnect("Select this server's LAN entry to connect without Kyber services.");
+        return false;
     }
 
     // TODO: Read KyberAuthentication join token's payload to print the userId of the player joining
     KYBER_LOG(Info, "[Server] Got player join request (Spectator: " << message->isSpectator << ")");
 
-    std::string playerName = message->playerName;
+    std::string playerName = wireName;
     static const std::string prefix = "KyberAuthentication:";
 
     if (playerName.rfind(prefix, 0) != 0)
@@ -884,8 +936,12 @@ void Server::Register(bool force, bool reuseId)
         if (!reuseId)
         {
             m_onlineMode = false;
+            if (IndependentLanEnabled() && m_serverId.empty())
+                m_serverId = "lan:" + std::to_string(GetCurrentProcessId());
         }
-        g_threadExecutor->QueueDelaySecs(GameThread_Server, 0.5, [this, force, reuseId]() { Register(force, reuseId); });
+        g_threadExecutor->QueueDelaySecs(GameThread_Server, 30.0, [this, reuseId]() {
+            if (IsRunning()) Register(true, reuseId && m_serverId.rfind("lan:", 0) != 0);
+        });
         return;
     }
 
@@ -896,7 +952,7 @@ void Server::Register(bool force, bool reuseId)
 
     g_program->GetAPI()->GetServerManagement()->Connect(m_serverId);
 
-    if (reuseId && !previousId.empty() && previousId != m_serverId)
+    if (!previousId.empty() && previousId != m_serverId)
     {
         m_socketSpawnInfo = SocketSpawnInfo(false, "", m_serverId, "");
 
@@ -905,6 +961,12 @@ void Server::Register(bool force, bool reuseId)
             UDPSocket* socket = m_socketManager->m_sockets.back();
             if (socket != m_natClient)
             {
+                if (previousId.rfind("lan:", 0) == 0)
+                {
+                    eastl::vector<kyber_api::ProxyInfo> proxies;
+                    for (const auto& proxy : g_program->GetAPI()->GetProxy()->GetList()) proxies.push_back(proxy);
+                    socket->UpdateProxies(proxies);
+                }
                 socket->ReconnectProxies();
             }
         }

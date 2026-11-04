@@ -14,6 +14,7 @@
 
 #include <processthreadsapi.h>
 #include <functional>
+#include <cstring>
 
 #define OFFSET_MOUNTSUPERBUNDLES HOOK_OFFSET(0x1401FEFC0)
 #define OFFSET_SUPERBUNDLEMANAGER_PARSEMANIFEST HOOK_OFFSET(0x14024A260)
@@ -243,7 +244,9 @@ void* SettingsManagerAddHk(
     void* inst, const char* groupName, void* instance, bool exposeToConsole, const char* a5, void* a6, bool a7)
 {
     static const auto trampoline = HookManager::Call(SettingsManagerAddHk);
-    return trampoline(inst, groupName, instance, true, a5, a6, a7);
+    // Temporary settings (including "undo autoplayers") must not be added to
+    // the persistent console registry: their storage is freed on level unload.
+    return trampoline(inst, groupName, instance, exposeToConsole, a5, a6, a7);
 }
 
 __int64 ExpressionTemporaryFixBFPlusHk(void* a1, void* a2)
@@ -342,6 +345,27 @@ void InitializeDebugHooks()
     if (!g_program->m_isDedicatedServer)
     {
         HookManager::CreateHook(OFFSET_GAMERENDERER_RENDER, GameRendererRenderHk);
+
+        // This caller can produce no entity on level load. Its output is
+        // already zero-initialized and it ignores Entity_init's return value.
+        // Skip only that call so the caller still performs its normal cleanup.
+        constexpr uintptr_t initCall = 0x140CC1FF4;
+        constexpr uint8_t expectedCall[] = { 0xE8, 0x17, 0xD6, 0x4A, 0x00 };
+        if (std::memcmp(HOOK_OFFSET(initCall), expectedCall, sizeof(expectedCall)) == 0)
+        {
+            static auto guard = safetyhook::create_mid(HOOK_OFFSET(initCall), [](safetyhook::Context& context) {
+                if (context.rcx == 0)
+                {
+                    context.rip = 0x140CC1FF9;
+                }
+            });
+            if (!guard)
+                KYBER_LOG(Warning, "[Client] Could not install the level entity initialization guard");
+        }
+        else
+        {
+            KYBER_LOG(Warning, "[Client] Unexpected level entity initialization call; skipping guard");
+        }
     }
 
     Hook::ApplyQueuedActions();

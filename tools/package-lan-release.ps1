@@ -37,10 +37,12 @@ try {
 $win = New-Item -ItemType Directory -Path "$output/kyber-launcher-windows-x64"
 $linux = New-Item -ItemType Directory -Path "$output/kyber-cli-linux-x64"
 Get-ChildItem -LiteralPath $launcher | Where-Object {
-    $_.Name -ne 'lan-module'
+    $_.Name -notin @('lan-module', 'BUILD-INFO.json', '.sentry-native')
 } | Copy-Item -Destination $win.FullName -Recurse
 Copy-Item -LiteralPath "$cli/bin/kyber_cli", "$cli/lib/librust_lib.so", "$MaximaLinux/maxima-bootstrap", $WineHelper -Destination $linux.FullName
 Copy-Item -LiteralPath "$MaximaWindows/maxima-bootstrap.exe", "$MaximaWindows/maxima-service.exe" -Destination $win.FullName
+Copy-Item -LiteralPath "$repo/tools/Start-LAN.cmd" -Destination $win.FullName
+Copy-Item -LiteralPath "$repo/docs/INDEPENDENT-LAN-RU.md" -Destination "$($win.FullName)/README-RU.md"
 Get-ChildItem -LiteralPath $RuntimeDirectory -Filter '*.dll' | ForEach-Object {
     Copy-Item -LiteralPath $_.FullName -Destination $win.FullName
 }
@@ -52,6 +54,16 @@ $revision = & git -C $repo rev-parse HEAD
 if ($LASTEXITCODE -ne 0) { throw 'Could not read source revision' }
 $sourceChanges = @(& git -C $repo status --porcelain)
 if ($LASTEXITCODE -ne 0) { throw 'Could not read source status' }
+$buildInfo = [ordered]@{
+    release = $Name
+    sourceCommit = $revision.Trim()
+    sourceDirty = $sourceChanges.Count -gt 0
+    lanAddVersion = ([IO.File]::ReadAllText((Join-Path $repo 'Launcher/assets/lan_add_version.txt'))).Trim()
+    moduleVersion = ([IO.File]::ReadAllText((Join-Path $repo 'Module/LAN-MODULE'))).Trim()
+    moduleSha256 = $moduleHash.ToLowerInvariant()
+    flutterRustBridgeVersion = '2.11.1'
+}
+[IO.File]::WriteAllText((Join-Path $win.FullName 'BUILD-INFO.json'), ($buildInfo | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
 foreach ($bundle in @($win.FullName, $linux.FullName)) {
     $module = New-Item -ItemType Directory -Path "$bundle/lan-module"
     Copy-Item -LiteralPath $ModuleDll -Destination "$($module.FullName)/Kyber.dll"

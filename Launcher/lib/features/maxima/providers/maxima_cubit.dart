@@ -15,7 +15,6 @@ import 'package:kyber_launcher/core/services/windows_env.dart';
 import 'package:kyber_launcher/features/ea/services/search_service.dart';
 import 'package:kyber_launcher/features/kyber/helper/kyber_status_helper.dart';
 import 'package:kyber_launcher/features/kyber/providers/kyber_api_status_cubit.dart';
-import 'package:kyber_launcher/features/lightswitch/models/status.dart';
 import 'package:kyber_launcher/features/maxima/dialogs/maxima_game_not_found_dialog.dart';
 import 'package:kyber_launcher/gen/rust/api/archive.dart';
 import 'package:kyber_launcher/gen/rust/api/maxima.dart';
@@ -48,6 +47,22 @@ class MaximaCubit extends Cubit<MaximaState> {
   }
 
   String? getUsername() => state.servicePlayer?.displayName;
+
+  void _completeIndependentLanLogin(ServicePlayer player) {
+    _updateTimer?.cancel();
+    _updateTimer = null;
+    _loggingIn = false;
+    LanMode.enabled = true;
+    ProcessEnv.set('KYBER_LAN_ONLY', '1');
+    ProcessEnv.delete('KYBER_API_TOKEN');
+    emit(
+      MaximaState(
+        loggedIn: true,
+        servicePlayer: player,
+        status: MaximaStatus.loaded,
+      ),
+    );
+  }
 
   Future<void> verifyToken([int tries = 0]) async {
     if (tries >= 3) {
@@ -231,27 +246,26 @@ class MaximaCubit extends Cubit<MaximaState> {
       return Future.error('Already logging in');
     }
 
-    if (lanOnly != null) LanMode.enabled = lanOnly;
+    if (lanOnly != null) {
+      LanMode.enabled = lanOnly;
+      if (!lanOnly) ProcessEnv.delete('KYBER_LAN_ONLY');
+    }
     if (!LanMode.enabled) {
       final cubit = navigatorKey.currentContext!.read<LightswitchCubit>();
-      late LightswitchStatus status;
-      if (!cubit.firstRequestCompleter.isCompleted) {
-        status = await cubit.firstRequestCompleter.future;
-      } else {
-        status = cubit.state;
-      }
-
-      if (status.status == KyberStatusEnum.down) {
-        _updateTimer?.cancel();
-
-        logger.severe('Kyber is down... Skipping login');
-
-        return emit(
-          MaximaState(
-            status: .error,
-            error: 'KyberDown',
-            servicePlayer: state.servicePlayer,
-          ),
+      try {
+        final status = !cubit.firstRequestCompleter.isCompleted
+            ? await cubit.firstRequestCompleter.future.timeout(
+                const Duration(seconds: 4),
+              )
+            : cubit.state;
+        if (status.status == KyberStatusEnum.down) {
+          LanMode.enabled = true;
+          logger.warning('Kyber unavailable; continuing with independent LAN');
+        }
+      } on Object {
+        LanMode.enabled = true;
+        logger.warning(
+          'Kyber status check unavailable; continuing with independent LAN',
         );
       }
     }
@@ -306,16 +320,7 @@ class MaximaCubit extends Cubit<MaximaState> {
       }
 
       if (LanMode.enabled) {
-        _updateTimer?.cancel();
-        ProcessEnv.set('KYBER_LAN_ONLY', '1');
-        ProcessEnv.delete('KYBER_API_TOKEN');
-        emit(
-          MaximaState(
-            loggedIn: true,
-            servicePlayer: servicePlayer,
-            status: MaximaStatus.loaded,
-          ),
-        );
+        _completeIndependentLanLogin(servicePlayer);
         return;
       }
 
@@ -330,7 +335,19 @@ class MaximaCubit extends Cubit<MaximaState> {
         ..info('Requesting Kyber auth token');
 
       final authToken = await getAuthToken();
-      final resp = await sl.get<KyberGRPCService>().login(authToken);
+      late LoginResponse resp;
+      try {
+        resp = await sl
+            .get<KyberGRPCService>()
+            .login(authToken)
+            .timeout(const Duration(seconds: 6));
+      } on Object {
+        logger.warning(
+          'Kyber login unavailable; EA ownership verified, continuing with independent LAN',
+        );
+        _completeIndependentLanLogin(servicePlayer);
+        return;
+      }
 
       final entitlements = resp.entitlements
           .map(parseUserEntitlement)
@@ -449,8 +466,9 @@ class MaximaCubit extends Cubit<MaximaState> {
 
     if (!Directory('.cache').existsSync()) {
       logger.info('Downloading maxima');
-      Directory('.cache/maxima/maxima-x86_64-win64/')
-          .createSync(recursive: true);
+      Directory(
+        '.cache/maxima/maxima-x86_64-win64/',
+      ).createSync(recursive: true);
       await Dio().download(
         'https://s3.kyber.gg/artifacts/maxima-win64.zip',
         '.cache/maxima.zip',
@@ -463,17 +481,21 @@ class MaximaCubit extends Cubit<MaximaState> {
       File('.cache/maxima.zip').deleteSync();
     }
 
-    if (!File('build/windows/x64/runner/Debug/maxima-bootstrap.exe')
-        .existsSync()) {
-      await File('.cache/maxima/maxima-x86_64-win64/maxima-bootstrap.exe')
-          .copy('build/windows/x64/runner/Debug/maxima-bootstrap.exe');
+    if (!File(
+      'build/windows/x64/runner/Debug/maxima-bootstrap.exe',
+    ).existsSync()) {
+      await File(
+        '.cache/maxima/maxima-x86_64-win64/maxima-bootstrap.exe',
+      ).copy('build/windows/x64/runner/Debug/maxima-bootstrap.exe');
     }
 
     if (Platform.isWindows) {
-      if (!File('build/windows/x64/runner/Debug/maxima-service.exe')
-          .existsSync()) {
-        await File('.cache/maxima/maxima-x86_64-win64/maxima-service.exe')
-            .copy('build/windows/x64/runner/Debug/maxima-service.exe');
+      if (!File(
+        'build/windows/x64/runner/Debug/maxima-service.exe',
+      ).existsSync()) {
+        await File(
+          '.cache/maxima/maxima-x86_64-win64/maxima-service.exe',
+        ).copy('build/windows/x64/runner/Debug/maxima-service.exe');
       }
     }
   }

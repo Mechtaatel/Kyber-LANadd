@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:grpc/grpc.dart';
 import 'package:kyber/gen/Proto/kyber_interface.pbgrpc.dart';
 import 'package:kyber/kyber.dart' hide Server;
@@ -16,17 +18,31 @@ class LauncherService extends LauncherCommonServiceBase {
   }
 
   @override
-  Future<CustomLevelDataResponse> getCustomLevelData(ServiceCall call, CustomLevelDataRequest req) {
+  Future<CustomLevelDataResponse> getCustomLevelData(
+    ServiceCall call,
+    CustomLevelDataRequest req,
+  ) {
     if (!sl.isRegistered<MaximaGameInstance>()) {
-      throw Exception('MaximaGameInstance is not registered in the service locator');
+      throw Exception(
+        'MaximaGameInstance is not registered in the service locator',
+      );
     }
 
     final instance = sl.get<MaximaGameInstance>();
     final levelService = sl.get<LevelDeclarationService>();
-    final map = levelService.getMapByMode(map: req.map, mode: req.mode, mods: instance.gameplayMods);
-    final mode = levelService.getModeName(mode: req.mode, mods: instance.gameplayMods);
+    final map = levelService.getMapByMode(
+      map: req.map,
+      mode: req.mode,
+      mods: instance.gameplayMods,
+    );
+    final mode = levelService.getModeName(
+      mode: req.mode,
+      mods: instance.gameplayMods,
+    );
 
-    return Future.value(CustomLevelDataResponse(mapName: map?.name, modeName: mode));
+    return Future.value(
+      CustomLevelDataResponse(mapName: map?.name, modeName: mode),
+    );
   }
 
   @override
@@ -61,19 +77,15 @@ class KyberGRPCServer {
   Future<void> start() async {
     _logger.info('Starting gRPC server');
     _server = Server.create(
-      services: [
-        LauncherService(),
-      ],
-      codecRegistry: CodecRegistry(codecs: const [
-        GzipCodec(),
-      ]),
+      services: [LauncherService()],
+      codecRegistry: CodecRegistry(codecs: const [GzipCodec()]),
       errorHandler: (error, trace) {
         _logger.severe('An error occurred: $error', error, trace);
       },
     );
 
     final port = await KyberNetworkHelper.findAvailablePort();
-    await _server?.serve(port: port);
+    await _server?.serve(address: InternetAddress.loopbackIPv4, port: port);
     Env.set('KYBER_LAUNCHER_PORT', port.toString());
 
     _logger.info('Server listening on port $port');

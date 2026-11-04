@@ -59,7 +59,8 @@ connect directly to the host. LAN-only sessions do not use Kyber join tokens,
 global bans, verified Kyber identities, public statistics or Vivox voice chat.
 LAN-only passwords are currently unsupported and are rejected explicitly.
 Restart the game when switching between LAN-only and online sessions. A LAN-only
-launcher session lists autonomous hosts; public hosts still require online login.
+launcher session lists autonomous hosts and public hosts that explicitly enable
+independent LAN admission. Other public hosts still require online login.
 
 The server browser scans on refresh, merges discovered hosts with public
 listings, and labels the region **LAN**. Use **REGION → LAN** to see only local
@@ -67,13 +68,43 @@ hosts. Sorting is official servers (including official Battlefront Plus), LAN
 servers, friends' servers, then other servers. A public server also found on LAN
 appears once and uses its direct LAN address. Discovery packets cannot grant a
 server official status. LAN-only hosts are not grouped using public hosting IDs.
-The route is checked again before joining. A hybrid public/LAN server still
-requires a valid Kyber login and join token; LAN priority does not disable public
-server authentication. Use LAN-only hosting for independence from Kyber outages.
+The route is checked again before joining. By default, a hybrid public/LAN server
+requires a valid Kyber login and join token. Hosts can explicitly enable the
+independent admission route described below without removing public hosting.
 The CLI retains its existing bundle-first module selection and is not changed
 by this Windows launcher compatibility workaround.
 Public API failures retain the last successful public snapshot for up to two
 minutes with an on-screen warning; background refresh no longer hides the list.
+
+### Independent LAN admission on a public host
+
+Set `KYBER_LAN_INDEPENDENT=1` in the game process environment and leave LAN
+discovery enabled. A host without a password advertises an independent LAN entry
+using the existing `lan_only=1` protocol. Released LAN ADD 1.8.3 clients already
+support it: select the LAN entry, which connects directly without requesting a
+Kyber join token, server details, proxies, public stats or voice credentials.
+There are no discovery tickets, expiry timers or client-module upgrades required.
+Updating the server DLL is sufficient for this route. The public Kyber entry
+continues using Kyber account authentication; an invalid Kyber token never falls
+back to guest admission. The independent route accepts guest joins on the game
+listener, so keep direct UDP access restricted to the intended LAN/VPN peers.
+
+The server assigns a random, separate session identity; clients cannot claim another player's EA/Kyber ID or
+obtain owner privileges by nickname. Plugins that grant roles must verify local
+sessions independently, for example using the existing Discord link-code flow.
+Kyber parties, account entitlements, global bans and public statistics cannot be
+verified for this independent session. EA ownership and matching mods remain
+required. This route must be enabled only on a trusted private network.
+
+In released 1.8.3, use **LAN — WITHOUT KYBER SERVICES** on the EA login screen
+when Kyber cannot be reached. New launcher sources also provide automatic fallback
+after a bounded wait. `Start-LAN.cmd` in portable Windows bundles forces LAN mode
+immediately. Once running, restart the game to switch
+between a public Kyber session and an independent LAN session. To leave forced
+LAN mode, close the game and launcher, then run `kyber_launcher.exe` directly.
+With independent
+admission enabled, a server whose initial public registration fails still starts
+locally and retries public registration in the background.
 
 ## Linux CLI
 

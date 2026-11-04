@@ -70,6 +70,7 @@ enum GameType {
 enum ServerGroupType {
   crossRegion,
   persisted,
+  connectionRoutes,
 }
 
 class ServerGroup {
@@ -86,6 +87,10 @@ class ServerGroup {
   final String groupKey;
 
   Server getPreferredServer() {
+    if (groupType == .connectionRoutes) {
+      return servers.firstWhereOrNull((server) => server.isLan) ??
+          servers.first;
+    }
     final s = List.of(servers)
       ..sort((a, b) {
         final aIsFull = a.playerCount >= a.maxPlayerCount;
@@ -130,10 +135,14 @@ class ServerGroup {
   }
 
   Set<ServerRegion> get regions {
-    return servers.map((e) => e.serverRegion).nonNulls.toSet();
+    return servers.map(regionFor).nonNulls.toSet();
   }
 
+  ServerRegion? regionFor(Server server) =>
+      server.serverRegion ?? (groupType == .connectionRoutes ? .all : null);
+
   ServerRegion? getPreferredRegion() {
+    if (groupType == .connectionRoutes) return regionFor(getPreferredServer());
     final pinnedProxies = servers
         .map((e) => e.meta['pinned_proxy_id'])
         .nonNulls
@@ -159,11 +168,11 @@ class ServerGroup {
 
   List<Server> getForRegion(ServerRegion region) {
     final s = List.of(servers);
-    if (region == ServerRegion.all) {
+    if (region == ServerRegion.all && groupType != .connectionRoutes) {
       return s;
     }
 
-    s.removeWhere((e) => e.serverRegion != region);
+    s.removeWhere((e) => regionFor(e) != region);
 
     return s;
   }
@@ -177,6 +186,7 @@ class ServerGroup {
   }
 
   int get totalPlayerCount {
+    if (groupType == .connectionRoutes) return serverInfo.playerCount;
     return servers.fold<int>(
       0,
       (previousValue, element) => previousValue + element.playerCount,

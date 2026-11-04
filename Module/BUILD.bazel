@@ -22,7 +22,7 @@ grpc_proto_library(
 
 cc_binary(
     name = "Kyber",
-    srcs = glob(["Source/**/*.cpp"]),
+    srcs = glob(["Source/**/*.cpp", "Public/**/*.h"]),
     includes = [
         "Public",
     ],
@@ -36,6 +36,8 @@ cc_binary(
         "version.lib",
         "Ole32.lib",
         "crypt32.lib",
+        "Bcrypt.lib",
+        "Dbghelp.lib",
         "User32.lib",
         "Shell32.lib",
     ],

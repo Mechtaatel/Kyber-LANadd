@@ -72,9 +72,7 @@ class _ServerInfoBoxState extends State<ServerInfoBox> {
 
     var instances = group.getSorted();
     if (selectedRegion != null) {
-      instances = instances
-          .where((e) => e.serverRegion == selectedRegion)
-          .toList();
+      instances = group.getForRegion(selectedRegion!);
     }
 
     return instances.isEmpty ? group.getSorted() : instances;
@@ -107,7 +105,7 @@ class _ServerInfoBoxState extends State<ServerInfoBox> {
   }
 
   void setPreferredRegion(ServerEntry serverEntry) {
-    if (serverEntry is! GroupedServer || serverEntry.serverInfo.isLan) {
+    if (serverEntry is! GroupedServer) {
       return;
     }
 
@@ -191,6 +189,7 @@ class _ServerInfoBoxState extends State<ServerInfoBox> {
     // Direct LAN connections must remain available while proxies are offline.
     final proxiesLoading =
         _group != null &&
+        _group!.groupType != .connectionRoutes &&
         !serverInfo.isLan &&
         context.watch<KyberProxyCubit>().state.loading;
     if (!proxiesLoading && !_regionResolved) {
@@ -350,59 +349,40 @@ class _ServerInfoBoxState extends State<ServerInfoBox> {
                                       '${serverInfo.playerCount}/${serverInfo.maxPlayerCount}',
                                 ),
                               ),
-                              if (serverInfo.isLan ||
-                                  (serverInfo.region.isNotEmpty &&
-                                      (selectedRegion == null ||
-                                          selectedRegion == .all)))
-                                SizedBox(
-                                  width: 55,
-                                  child: _Badge(
-                                    text: serverInfo.isLan
-                                        ? 'LAN'
-                                        : serverInfo.region.toUpperCase(),
+                              if (regions.length <= 1 &&
+                                  (serverInfo.isLan ||
+                                      (serverInfo.region.isNotEmpty &&
+                                          (selectedRegion == null ||
+                                              selectedRegion == .all))))
+                                if (serverInfo.isLan)
+                                  const ServerRegionBadge(region: 'LAN')
+                                else
+                                  SizedBox(
+                                    width: 55,
+                                    child: _Badge(
+                                      text: serverInfo.isLan
+                                          ? 'LAN'
+                                          : serverInfo.region.toUpperCase(),
+                                    ),
                                   ),
-                                ),
-                              if (regions.length > 1) ...[
+                              if (showInstances || regions.length > 1)
                                 const Spacer(),
-                                if (showInstances)
-                                  _PageSelector(
-                                    current: instances.indexOf(serverInfo) + 1,
-                                    total: instances.length,
-                                    onPageChanged: _switchInstance,
-                                  ),
+                              if (showInstances)
+                                _PageSelector(
+                                  current: instances.indexOf(serverInfo) + 1,
+                                  total: instances.length,
+                                  onPageChanged: _switchInstance,
+                                ),
+                              if (regions.length > 1)
                                 _RegionSelector(
                                   regions: regions,
                                   selected: selectedRegion,
                                   onChanged: _switchRegion,
                                 ),
-                              ],
                             ],
                           ),
                         ),
                       ),
-                      if (showInstances) ...[
-                        const SizedBox(height: 10),
-                        Padding(
-                          padding: const .symmetric(horizontal: 25),
-                          child: Row(
-                            spacing: 8,
-                            children: [
-                              for (final instance in instances)
-                                Expanded(
-                                  child: Container(
-                                    height: 3,
-                                    decoration: BoxDecoration(
-                                      color: instance == serverInfo
-                                          ? kActiveColor
-                                          : kButtonBorder,
-                                      borderRadius: .circular(1.5),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ],
                       const SizedBox(height: 25),
                       Padding(
                         padding: const .symmetric(horizontal: 25),
@@ -938,22 +918,30 @@ class _RegionSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = <(String, ServerRegion?)>[
-      for (final region in regions) (region.name.toUpperCase(), region),
+      for (final region in regions)
+        (region == .all ? 'KYBER' : region.name.toUpperCase(), region),
     ];
 
     const border = BorderSide(color: kButtonBorder, width: 1.5);
+    final hasIcon = regionIcons.containsKey(selected?.name);
 
     return Stack(
       children: [
         Container(
           height: 30,
-          padding: const .only(left: 15),
-          margin: const .only(left: 17, top: 2.5),
+          padding: .only(left: hasIcon ? 15 : 0),
+          margin: .only(left: hasIcon ? 17 : 0, top: 2.5),
           clipBehavior: .hardEdge,
           decoration: BoxDecoration(
             color: kControlBackgroundColor,
-            border: .fromLTRB(top: border, bottom: border, right: border),
+            border: .fromLTRB(
+              left: hasIcon ? BorderSide.none : border,
+              top: border,
+              bottom: border,
+              right: border,
+            ),
             borderRadius: .horizontal(
+              left: .circular(hasIcon ? 0 : kDefaultInnerBorderRadius),
               right: const .circular(kDefaultInnerBorderRadius),
             ),
           ),

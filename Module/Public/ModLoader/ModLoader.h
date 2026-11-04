@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include <list>
+
 #include <Core/DebugHooks.h>
 #include <SDK/TypeInfo.h>
 #include <SDK/Types.h>
@@ -60,6 +62,8 @@ struct ContainerCreationInfo
     eastl::string name;
     bool referencesResolved;
     bool dupedWithHandler;
+    bool processing = false;
+    bool cancelled = false;
 };
 
 struct SuperBundleEntry
@@ -127,7 +131,8 @@ public:
     eastl::unordered_map<uint32_t, CustomAssetHandler*> m_handlers;
     eastl::unordered_map<uint32_t, eastl::string> m_dupedHandlerSources;
 
-    std::vector<ContainerCreationInfo> m_deferredContainerCreationQueue;
+    // Handlers can re-enter resource loading and enqueue more work.
+    std::list<ContainerCreationInfo> m_deferredContainerCreationQueue;
 
     std::set<uint32_t> m_addedBundles;
     std::set<int32_t> m_requiredFiles;

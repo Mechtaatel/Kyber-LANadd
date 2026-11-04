@@ -158,6 +158,28 @@ class MaximaHelper {
     }
 
     final lanOnly = LanMode.forLaunch(initializeRequest);
+    // Freeze names, versions and order before launch. Reading the library again
+    // on reconnect would mistake newly installed mods for already loaded ones.
+    final expandedMods = ModCollectionMetaData(
+      title: 'Running game',
+      localId: 'running-game',
+      mods: (mods ?? const <FrostyMod>[])
+          .map((mod) => mod.toCollectionMod())
+          .toList(),
+    ).getLocalMods(expandCollections: true);
+    if (expandedMods.contains(null)) {
+      throw StateError('The selected mod collection contains missing files.');
+    }
+    final loadedMods =
+        mods == null &&
+            (initializeRequest?.modData.modPaths.isNotEmpty ?? false)
+        ? null
+        : List<CollectionMod>.unmodifiable(
+            expandedMods
+                .whereType<FrostyMod>()
+                .where((mod) => !mod.isCollection)
+                .map((mod) => mod.toCollectionMod()),
+          );
     var moduleDirectory = lanOnly
         ? FileHelper.getGameModuleDirectory(lanOnly: true)
         : await FileHelper.prepareOnlineModule();
@@ -265,6 +287,7 @@ class MaximaHelper {
       clientService: gameClient,
       isDedicated: false,
       mods: mods ?? [],
+      loadedMods: loadedMods,
       loadedModPaths: List<String>.unmodifiable(
         initializeRequest?.modData.modPaths ?? const <String>[],
       ),

@@ -2,6 +2,7 @@
 #include <Core/Program.h>
 #include <Core/Server.h>
 #include <Network/LanAddress.h>
+#include <Network/LanJoin.h>
 #include <Utilities/PlatformUtils.h>
 #include <ws2tcpip.h>
 #include <cstring>
@@ -136,6 +137,12 @@ void Server::PollLanDiscovery()
         lastReplies[peer.sin_addr.s_addr] = now;
         kyber_api::Server server;
         FillBrowserInfo(server);
+        if (IndependentLanEnabled() && m_creationInfo->password.empty())
+        {
+            // Released LAN ADD clients already understand lan_only and join
+            // directly, without a Kyber token or a new client module.
+            (*server.mutable_meta())["lan_only"] = "1";
+        }
         const std::string reply = std::string(query, kQuerySize) + server.SerializeAsString();
         if (reply.size() <= 60000)
         {

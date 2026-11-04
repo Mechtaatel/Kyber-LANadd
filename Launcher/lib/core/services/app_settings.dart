@@ -58,6 +58,12 @@ class General {
   set lastSelectedGameCollection(String? value) =>
       box.put('lastSelectedGameCollection', value);
 
+  String? get lastLogExportDirectory =>
+      box.get('lastLogExportDirectory') as String?;
+
+  Future<void> saveLogExportDirectory(String value) =>
+      box.put('lastLogExportDirectory', value);
+
   bool get gameWithoutMods =>
       box.get('gameWithoutMods', defaultValue: false) as bool;
 

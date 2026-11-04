@@ -116,7 +116,9 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [IO.Compression.ZipFile]::OpenRead($archive)
 try {
     foreach ($name in ($requiredRelease + $requiredMaxima + $requiredRuntime + @('vivoxsdk.dll') + @(($requiredModule + $requiredRuntime) | ForEach-Object { "lan-module/$_" }))) {
-        if (!$zip.GetEntry($name)) { throw "Missing packaged component: $name" }
+        if (!($zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -ceq $name })) {
+            throw "Missing packaged component: $name"
+        }
     }
 } finally { $zip.Dispose() }
 Get-Item -LiteralPath $archive | Select-Object FullName, Length

@@ -11,6 +11,7 @@ class MaximaGameInstance {
     required this.clientService,
     this.mods = const [],
     this.loadedModPaths = const [],
+    this.loadedMods,
     this.voipSettings,
     this.lanOnly = false,
   }) {
@@ -23,6 +24,8 @@ class MaximaGameInstance {
   ClientGRPCService clientService;
   List<FrostyMod> mods;
   final List<String> loadedModPaths;
+  // Expanded user selection at launch, before automatic Kyber preloads.
+  final List<CollectionMod>? loadedMods;
   VoipSettings? voipSettings;
 
   late StreamController<String> _eventStreamController;
@@ -57,6 +60,7 @@ class MaximaGameInstance {
       clientService: clientService ?? this.clientService,
       mods: mods ?? this.mods,
       loadedModPaths: loadedModPaths,
+      loadedMods: loadedMods,
       voipSettings: voipSettings ?? this.voipSettings,
     );
   }

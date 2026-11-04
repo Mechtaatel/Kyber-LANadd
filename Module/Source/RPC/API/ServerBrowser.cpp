@@ -2,6 +2,7 @@
 
 #define _WINSOCKAPI_
 #include <RPC/API/ServerBrowser.h>
+#include <chrono>
 #include <Core/Program.h>
 #include <Utilities/PlatformUtils.h>
 
@@ -43,6 +44,7 @@ ServerBrowserAPI::ServerBrowserAPI(std::shared_ptr<Channel> channel, AsyncRPCMan
 std::optional<kyber_api::Server> ServerBrowserAPI::GetServer(const std::string& serverId) const
 {
     ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(4));
     context.AddMetadata("authorization", m_token);
 
     ServerRequest request;
@@ -63,6 +65,7 @@ std::optional<kyber_api::Server> ServerBrowserAPI::GetServer(const std::string& 
 std::optional<std::string> ServerBrowserAPI::RegisterServer(const ServerCreationInfo& serverInfo, const std::string& serverId) const
 {
     ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(4));
     context.AddMetadata("authorization", m_token);
 
     RegisterServerRequest request;

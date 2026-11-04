@@ -20,6 +20,7 @@ import 'package:kyber_launcher/shared/ui/ui.dart';
 import 'package:tinycolor2/tinycolor2.dart';
 
 final Map<String, String> regionIcons = {
+  'lan': 'assets/icons/regions/kbl-lan-region-icon.svg',
   'na': Assets.icons.regions.kblNaRegionIcon.path,
   'eu': Assets.icons.regions.kblEuRegionIcon.path,
   'as': Assets.icons.regions.kblAsRegionIcon.path,
@@ -194,13 +195,17 @@ class ServerListEntry extends StatelessWidget {
                               spacing: 6,
                               children: [
                                 for (final region in group.regions.sortedBy(
-                                  (region) => region.name,
+                                  (region) => region == .lan ? '' : region.name,
                                 ))
-                                  _RegionBadge(region: region.name),
+                                  ServerRegionBadge(
+                                    region: region == .all
+                                        ? 'KYBER'
+                                        : region.name,
+                                  ),
                               ],
                             ),
                           ] else if (serverInfo.hasRegion())
-                            _RegionBadge(region: serverInfo.region),
+                            ServerRegionBadge(region: serverInfo.region),
                           SizedBox(
                             width: 45,
                             child: Builder(
@@ -208,7 +213,9 @@ class ServerListEntry extends StatelessWidget {
                                 var playerCount =
                                     '${serverInfo.playerCount}/${serverInfo.maxPlayerCount}';
 
-                                if (server is GroupedServer) {
+                                if (server case GroupedServer(
+                                  :final group,
+                                ) when group.groupType != .connectionRoutes) {
                                   playerCount = '${server.totalPlayerCount}';
                                 }
 
@@ -224,7 +231,7 @@ class ServerListEntry extends StatelessWidget {
                     if (!withoutQuickJoin) ...[
                       _JoinButton(
                         key: ValueKey(serverInfo.id),
-                        server: serverInfo,
+                        server: server,
                       ),
                     ],
                   ],
@@ -238,8 +245,8 @@ class ServerListEntry extends StatelessWidget {
   }
 }
 
-class _RegionBadge extends StatelessWidget {
-  const _RegionBadge({super.key, required this.region});
+class ServerRegionBadge extends StatelessWidget {
+  const ServerRegionBadge({super.key, required this.region});
 
   final String region;
 
@@ -275,7 +282,7 @@ class _RegionBadge extends StatelessWidget {
 class _JoinButton extends StatefulWidget {
   const _JoinButton({required this.server, super.key});
 
-  final Server server;
+  final ServerEntry server;
 
   @override
   State<_JoinButton> createState() => _JoinButtonState();
@@ -297,11 +304,11 @@ class _JoinButtonState extends State<_JoinButton> {
             onTap:
                 ServerBrowserHelper.canJoinServer(
                   context,
-                  server: widget.server,
+                  server: widget.server.serverInfo,
                 )
                 ? () {
                     context.read<ServerBrowserCubit>()
-                      ..selectServer(SingleServer(server: widget.server))
+                      ..selectServer(widget.server)
                       ..joinServer(enabledDownload: false);
                   }
                 : null,
@@ -311,11 +318,11 @@ class _JoinButtonState extends State<_JoinButton> {
                   onPressed:
                       ServerBrowserHelper.canJoinServer(
                         context,
-                        server: widget.server,
+                        server: widget.server.serverInfo,
                       )
                       ? () {
                           context.read<ServerBrowserCubit>()
-                            ..selectServer(SingleServer(server: widget.server))
+                            ..selectServer(widget.server)
                             ..joinServer(enabledDownload: false);
                         }
                       : null,

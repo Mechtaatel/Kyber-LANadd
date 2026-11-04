@@ -2,6 +2,7 @@
 
 #define _WINSOCKAPI_
 #include <RPC/API/Proxy.h>
+#include <chrono>
 
 #include <Base/Log.h>
 
@@ -18,6 +19,7 @@ ProxyAPI::ProxyAPI(std::shared_ptr<Channel> channel, std::string token)
 std::vector<ProxyInfo> ProxyAPI::GetList() const
 {
     ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(4));
 
     kyber_common::Empty request;
 

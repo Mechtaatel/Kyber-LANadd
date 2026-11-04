@@ -54,6 +54,12 @@ class KyberServerHelper {
           )
           .toList();
 
+      if (matches.isEmpty) {
+        throw StateError(
+          'Required mod ${e.name} (${e.version}) is not installed.',
+        );
+      }
+
       return matches.firstWhereOrNull(
             (m) => !m.isCollection || !m.isCorrupted(),
           ) ??
@@ -82,11 +88,18 @@ class KyberServerHelper {
     // Keep the host's required mod order even when the chosen collection
     // already includes gameplay mods. Expand collections before deduplicating
     // so an explicit .fbmod and the same file inside a collection load once.
+    final selectedMods = selectedCollection?.getLocalMods(
+      expandCollections: true,
+    );
+    if (selectedMods?.contains(null) ?? false) {
+      throw StateError(
+        'The selected cosmetic collection contains missing files.',
+      );
+    }
     final orderedMods = mergeServerModOrder(
       collectionMods,
-      selectedCollection
-              ?.getLocalMods(expandCollections: true)
-              .whereType<FrostyMod>()
+      selectedMods
+              ?.whereType<FrostyMod>()
               .where((mod) => !mod.isCollection)
               .map((mod) => mod.toCollectionMod()) ??
           const [],
@@ -105,20 +118,22 @@ class KyberServerHelper {
       localId: server.id,
     );
 
-    if (server.isLan && sl.isRegistered<MaximaGameInstance>()) {
+    if (sl.isRegistered<MaximaGameInstance>()) {
       final instance = sl.get<MaximaGameInstance>();
-      final requiredPaths = mergeServerModOrder(
-        collectionMods,
-        const [],
-      ).map((mod) => mod.filename).whereType<String>();
-      if (!hasRequiredServerModOrder(instance.loadedModPaths, requiredPaths)) {
+      if (instance.loadedMods == null ||
+          !hasSameModLoadOrder(instance.loadedMods!, orderedMods)) {
         _logger.warning(
-          'Running game has a different required LAN mod set or load order. '
-          'A join request cannot reload mods in an existing game process.',
+          'Reconnect refused: running game mod snapshot is unknown or differs '
+          'from the requested mods, versions or load order.',
         );
         NotificationService.error(
-          message:
-              'Restart Battlefront II to load this LAN server\'s required mods.',
+          message: instance.loadedMods == null
+              ? "Cannot verify the running game's mods. "
+                    'Restart Battlefront II '
+                    'once from this launcher before reconnecting.'
+              : 'Cannot join: the running game has different mods, versions or '
+                    'load order. Use the same cosmetic selection or restart '
+                    "Battlefront II with this server's mods.",
         );
         return;
       }
@@ -179,16 +194,18 @@ class KyberServerHelper {
     }
 
     try {
-      final service = sl.get<KyberGRPCService>();
       JoinTokenResponse? joinToken;
-      if (!server.isLanOnly)
+      if (!server.isLanOnly) {
         try {
-          joinToken = await service.clientServerClient.createJoinToken(
-            .new(
-              server: server.id,
-              password: password,
-            ),
-          );
+          joinToken = await sl
+              .get<KyberGRPCService>()
+              .clientServerClient
+              .createJoinToken(
+                .new(
+                  server: server.id,
+                  password: password,
+                ),
+              );
         } on GrpcError catch (e) {
           if (!server.isLan &&
               queueIfFull &&
@@ -204,6 +221,7 @@ class KyberServerHelper {
           }
           rethrow;
         }
+      }
 
       final joinRequest = JoinServerRequest(
         id: server.isLanOnly ? null : server.id,
@@ -228,6 +246,10 @@ class KyberServerHelper {
       } else {
         final instance = sl.get<MaximaGameInstance>();
         await instance.clientService.client.joinServer(joinRequest);
+        _logger.info(
+          'Join request sent to the running game (PID ${instance.pid}); '
+          'mod selection matches.',
+        );
       }
     } on GrpcError catch (e) {
       _logger.severe('Failed to join server: ${e.message}', e);

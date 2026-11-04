@@ -141,10 +141,14 @@ class ServerListCubit extends Cubit<ServerListState> {
 
     for (final local in localServers) {
       if (LanMode.enabled && !local.isLanOnly) continue;
-      final index = s.indexWhere((server) => server.id == local.id);
+      final index = s.indexWhere(
+        (server) => !server.isLan && server.id == local.browserServerId,
+      );
       if (index >= 0) {
-        // Keep trusted official/friend metadata, prefer the discovered LAN route.
-        s[index] = LanDiscovery.preferLan(s[index], local);
+        // Retain both routes. A region selection must use the original online
+        // endpoint and authentication, not a LAN record relabeled as EU/NA.
+        final route = LanDiscovery.preferLan(s[index], local);
+        if (route.isLan) s.add(route);
       } else {
         s.add(local);
       }
@@ -237,9 +241,32 @@ class ServerListCubit extends Cubit<ServerListState> {
     }
 
     final serverGroups = <String, ServerGroup>{};
+    final routeGroups = s.groupListsBy((server) => server.browserServerId)
+      ..removeWhere(
+        (_, routes) =>
+            !routes.any((server) => server.isLan) ||
+            !routes.any((server) => !server.isLan),
+      );
+    for (final entry in routeGroups.entries) {
+      final key = 'routes:${entry.key}';
+      serverGroups[key] = ServerGroup(
+        servers: entry.value,
+        groupName: entry.value.first.name,
+        groupType: .connectionRoutes,
+        groupKey: key,
+      );
+    }
+    final routeServerIds = routeGroups.values
+        .expand((routes) => routes.map((server) => server.id))
+        .toSet();
     final groupIdServers = Preferences.general.groupServersByRegion
         ? (List.of(s)
-              .where((e) => !e.isLan && e.meta.containsKey('group_id'))
+              .where(
+                (e) =>
+                    !e.isLan &&
+                    !routeServerIds.contains(e.id) &&
+                    e.meta.containsKey('group_id'),
+              )
               .groupListsBy((e) => e.meta['group_id']! + e.creatorId)
             ..removeWhere((k, v) => v.length < 2))
         : <String, List<Server>>{};
@@ -262,6 +289,7 @@ class ServerListCubit extends Cubit<ServerListState> {
             .where(
               (e) =>
                   !e.isLan &&
+                  !routeServerIds.contains(e.id) &&
                   !alreadyGroupedIds.contains(e.id) &&
                   e.meta.containsKey('instance_id') &&
                   e.meta.containsKey('persisted_id'),

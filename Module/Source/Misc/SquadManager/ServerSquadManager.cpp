@@ -29,6 +29,7 @@ TL_DECLARE_FUNC(0x141BC2380, void, ServerSquadManagerEntity_removePlayerFromSqua
 ServerSquadManager::ServerSquadManager(EventManager* eventManager)
 {
     eventManager->RegisterListener<ServerPlayerAuthenticatedEvent>(this);
+    eventManager->RegisterListener<ServerPlayerDisconnectedEvent>(this);
 
     InitializeHooks();
 
@@ -41,14 +42,16 @@ void ServerSquadManager::OnEvent(const Event& event)
     {
         KYBER_LOG(Debug, "[SquadManager] Got ServerPlayerAuthenticatedEvent");
         const auto& authenticatedEvent = event.as<ServerPlayerAuthenticatedEvent>();
-        if (authenticatedEvent.groupId == 0)
+        ServerPlayer* player = authenticatedEvent.connection->GetPlayer();
+        if (player == nullptr)
         {
             return;
         }
 
-        ServerPlayer* player = authenticatedEvent.connection->GetPlayer();
-        if (player == nullptr)
+        if (authenticatedEvent.groupId == 0)
         {
+            const GroupId previousGroup = FindPlayerGroup(player);
+            if (previousGroup != 0) RemovePlayerFromGroup(player, previousGroup);
             return;
         }
 
@@ -57,17 +60,16 @@ void ServerSquadManager::OnEvent(const Event& event)
     else if (event.is<ServerPlayerDisconnectedEvent>())
     {
         KYBER_LOG(Debug, "[SquadManager] Got ServerPlayerDisconnectedEvent");
-        const auto& disconnectedEvent = event.as<ServerPlayerAuthenticatedEvent>();
-        ServerPlayer* player = disconnectedEvent.connection->GetPlayer();
-        if (player == nullptr)
+        const auto& disconnectedEvent = event.as<ServerPlayerDisconnectedEvent>();
+        if (disconnectedEvent.playerId == 0)
         {
             return;
         }
 
-        GroupId groupId = FindPlayerGroup(player);
+        GroupId groupId = FindPlayerGroup(disconnectedEvent.playerId);
         if (groupId != 0)
         {
-            RemovePlayerFromGroup(player, groupId);
+            RemovePlayerFromGroup(disconnectedEvent.playerId, groupId);
         }
     }
 }

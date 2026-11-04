@@ -1,6 +1,7 @@
 // Copyright Armchair Developers / Sean Kahler. Licensed under GPLv3.
 
 #include <Core/Sentry.h>
+#include <Core/CrashDiagnostics.h>
 
 #include <Base/Log.h>
 #include <Hook/HookManager.h>
@@ -171,9 +172,19 @@ void PrintDumpToLog(EXCEPTION_POINTERS* exceptionInfo)
 
     KYBER_LOG(Info, "Exception Code: 0x" << std::hex << errorCode << " (" << ExceptionCodeToString(errorCode) << ")");
     KYBER_LOG(Info, "Exception Flags: 0x" << std::hex << exceptionInfo->ExceptionRecord->ExceptionFlags);
+    KYBER_LOG(Info, "Fault thread: " << GetCurrentThreadId() << "; uptime ms: " << GetTickCount64());
+    if ((errorCode == EXCEPTION_ACCESS_VIOLATION || errorCode == EXCEPTION_IN_PAGE_ERROR) &&
+        exceptionInfo->ExceptionRecord->NumberParameters >= 2)
+    {
+        const auto operation = exceptionInfo->ExceptionRecord->ExceptionInformation[0];
+        KYBER_LOG(Info, "Fault access: " << (operation == 0 ? "read" : operation == 1 ? "write" : operation == 8 ? "execute" : "unknown")
+            << "; target address: 0x" << std::hex << exceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+    }
     KYBER_LOG(Info, "Exception Address: 0x" << std::hex << exceptionInfo->ExceptionRecord->ExceptionAddress);
     KYBER_LOG(Info, "");
-    PrintStackTrace(exceptionInfo->ContextRecord);
+    // StackWalk64 changes CONTEXT; retain the actual fault registers.
+    CONTEXT walkContext = *exceptionInfo->ContextRecord;
+    PrintStackTrace(&walkContext);
     KYBER_LOG(Info, "");
     PrintRegisters(exceptionInfo->ContextRecord);
 
@@ -183,8 +194,32 @@ void PrintDumpToLog(EXCEPTION_POINTERS* exceptionInfo)
 void WriteMiniDumpHk(MiniDumpInfo* params)
 {
     static const auto trampoline = HookManager::Call(WriteMiniDumpHk);
+    static volatile LONG handlingCrash = 0;
+    if (InterlockedCompareExchange(&handlingCrash, 1, 0) != 0) return;
+    CONTEXT preservedContext = *params->exceptionInfo->ContextRecord;
+    EXCEPTION_RECORD preservedRecord = *params->exceptionInfo->ExceptionRecord;
+    EXCEPTION_POINTERS preservedException{&preservedRecord, &preservedContext};
 
     KYBER_LOG(Info, "Redirecting crash to Sentry");
+
+    if (LocalCrashDumpsEnabled())
+    {
+        DWORD error;
+        const wchar_t* path;
+        const bool saved = CaptureLocalCrashDump(&preservedException, &error, &path);
+        if (saved)
+            KYBER_LOG(Info, "[CrashDiagnostics] Local minidump saved: " << std::filesystem::path(path).string());
+        else
+            KYBER_LOG(Error, "[CrashDiagnostics] Local minidump failed, Windows error: " << error);
+        // A hung DbgHelp worker must not block automatic recovery, nor race
+        // another DbgHelp call from the text/Sentry stack walkers.
+        if (error == ERROR_TIMEOUT)
+        {
+            KYBER_LOG(Error, "[CrashDiagnostics] Dump worker timed out; terminating the already-fatal process");
+            TerminateProcess(GetCurrentProcess(), EXCEPTION_ACCESS_VIOLATION);
+            return;
+        }
+    }
 
     for (const auto& [key, value] : Sentry::s_debugContextData)
     {
@@ -202,12 +237,9 @@ void WriteMiniDumpHk(MiniDumpInfo* params)
     memset(&uctx, 0, sizeof(uctx));
     uctx.exception_ptrs = *params->exceptionInfo;
     sentry_handle_exception(&uctx);
-
-    //if (std::getenv("POD_NAME") != nullptr || SHOULD_LOG(Kyber::LogLevel::Debug))
-    // Always do now
-    {
-        PrintDumpToLog(params->exceptionInfo);
-    }
+    // Preserve Sentry's existing DbgHelp lifecycle. Use the fault snapshot even
+    // if a third-party handler or stack walker changed its own CONTEXT.
+    PrintDumpToLog(&preservedException);
 
     // For now always create crash dump for testing
     if (PlatformUtils::GetEnv("KYBER_PRESERVE_CRASH_DUMP", "0") == "1")
@@ -236,6 +268,14 @@ void Sentry::Initialize()
 #endif
 
     sentry_options_t* options = sentry_options_new();
+    const auto crashDirectory = PlatformUtils::GetEnv("KYBER_LOCAL_CRASH_DUMP_DIR", "");
+    if (!crashDirectory.empty())
+    {
+        if (InitializeLocalCrashDumps(std::filesystem::path(crashDirectory).wstring()))
+            KYBER_LOG(Info, "[CrashDiagnostics] Local minidumps enabled; heap dumps disabled; worker timeout 25s");
+        else
+            KYBER_LOG(Error, "[CrashDiagnostics] Cannot initialize local minidump worker");
+    }
     sentry_options_set_dsn(options, "https://0e9433cdc24aa998ae3944ebe424a313@o4510921032859648.ingest.de.sentry.io/4510937325699152");
 
     sentry_options_set_database_pathw(options, (PlatformUtils::GetProgramDataPath() / "ModuleData/Sentry").c_str());

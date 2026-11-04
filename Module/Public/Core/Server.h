@@ -55,6 +55,7 @@ class ServerPlayerDisconnectedEvent : public Event
 {
 public:
     ServerPlayer* player;
+    uint64_t playerId = 0;
 };
 
 class MainLoopInitStartServerEvent : public Event

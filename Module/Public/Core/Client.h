@@ -11,6 +11,8 @@
 #include <Misc/SquadManager/ClientSquadManager.h>
 #include <Misc/PlayerGameplayManager.h>
 
+#include <optional>
+
 #define OFFSET_GET_CLIENT_INSTANCE 0x14659DE50
 
 namespace Kyber
@@ -31,7 +33,8 @@ public:
     void AttemptJoinVoip();
 
     // If proxied is true, IP is assumed to be a proxy ID
-    void JoinServer(const std::string& id, std::string ip, uint16_t port, bool spectate, bool proxied = false, bool changeState = true);
+    void JoinServer(const std::string& id, std::string ip, uint16_t port, bool spectate, bool proxied = false,
+        bool changeState = true, std::optional<std::string> joinToken = std::nullopt);
 
     __int64 ChangeClientState(ClientState currentClientState)
     {

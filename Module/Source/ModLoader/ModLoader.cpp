@@ -476,8 +476,10 @@ void RunHandler(ContainerCreationInfo& info, CustomAssetHandlerLoadStage loadSta
 
     for (const auto& handlerHash : uniqueHandlers)
     {
+        if (info.cancelled)
+            break;
         KYBER_LOG(Debug, "Modifying handler data " << info.container->m_dcType->getName());
-        while (!g_modLoader->m_handlers[handlerHash]->Modify(ctx, info.container, handlerData[handlerHash]))
+        while (!info.cancelled && !g_modLoader->m_handlers[handlerHash]->Modify(ctx, info.container, handlerData[handlerHash]))
         {
             KYBER_LOG(Warning, "Forcing resource manager update for handler modification");
             ResourceManager_forceUpdate();
@@ -515,6 +517,11 @@ void RuntimeDatabaseDomainFetchNewlyLoadedPartitionsHk(void* inst, eastl::vector
     for (auto it = queue.begin(); it != queue.end();)
     {
         ContainerCreationInfo& info = *it;
+        if (info.processing || info.cancelled || info.referencesResolved || inst != info.runtimeDatabaseDomain)
+        {
+            ++it;
+            continue;
+        }
         bool found = false;
         for (const auto& partition : partitions)
         {
@@ -533,17 +540,15 @@ void RuntimeDatabaseDomainFetchNewlyLoadedPartitionsHk(void* inst, eastl::vector
             continue;
         }
 
-        void* deferredDomain = info.runtimeDatabaseDomain;
-        if (info.referencesResolved || inst != deferredDomain)
-        {
-            ++it;
-            continue;
-        }
-
         KYBER_LOG(Debug, "Running stage [ReferencesResolved] handlers");
+        info.processing = true;
         RunHandler(info, CustomAssetHandlerLoadStage_ReferencesResolved);
-
+        info.processing = false;
         info.referencesResolved = true;
+        if (info.cancelled)
+            it = queue.erase(it);
+        else
+            ++it;
         KYBER_LOG(Debug, "Setting references as resolved");
     }
 }
@@ -565,10 +570,18 @@ void ResourceManagerCompartmentResolveReferencesHk(ResourceManager_Compartment* 
 void ResourceManagerCompartmentEndClearHk(ResourceManager_Compartment* inst)
 {
     static auto trampoline = HookManager::Call(ResourceManagerCompartmentEndClearHk);
+    auto* domain = inst->m_domain;
+    auto& queue = g_modLoader->m_deferredContainerCreationQueue;
+    queue.remove_if([domain](ContainerCreationInfo& info) {
+        if (info.runtimeDatabaseDomain != domain)
+            return false;
+        info.cancelled = true;
+        return !info.processing;
+    });
+    g_modLoader->m_domainLoadedPartitions.erase(domain);
     trampoline(inst);
 
     debugCompartments.erase(inst);
-    g_modLoader->m_domainLoadedPartitions.erase(inst->m_domain);
 
     KYBER_LOG(Debug, "Cleared resource compartment " << std::hex << inst);
 }
@@ -669,15 +682,16 @@ void ResourceManagerUpdateResourcesHk(void* inst, bool newTick, bool forced)
     for (auto it = queue.begin(); it != queue.end();)
     {
         ContainerCreationInfo& info = *it;
-        if (!info.referencesResolved)
+        if (!info.referencesResolved || info.processing)
         {
             ++it;
             continue;
         }
 
         KYBER_LOG(Debug, "Running stage [PostLoad] handlers");
+        info.processing = true;
         RunHandler(info, CustomAssetHandlerLoadStage_PostLoad);
-        queue.erase(it);
+        it = queue.erase(it);
     }
 
     isRunningDeferredHandlers = false;

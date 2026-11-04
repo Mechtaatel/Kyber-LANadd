@@ -7,6 +7,8 @@
 #include <SDK/Fb/Core.h>
 
 #include <Core/Program.h>
+#include <Core/Server.h>
+#include <Misc/SquadManager/ServerSquadManager.h>
 #include <SDK/Funcs.h>
 #include <SDK/Fb/WS.h>
 
@@ -882,6 +884,23 @@ static int ServerPlayerIndex(lua_State* L)
     else if (key == "team")
     {
         lua_pushinteger(L, player->m_teamId);
+        return 1;
+    }
+    else if (key == "groupId")
+    {
+        // Preserve the full authenticated uint64 party ID without Lua number rounding.
+        uint64_t groupId = 0;
+        if (g_program->m_server != nullptr && g_program->m_server->m_squadManager != nullptr)
+        {
+            groupId = g_program->m_server->m_squadManager->FindPlayerGroup(player);
+        }
+        const std::string value = std::to_string(groupId);
+        lua_pushlstring(L, value.data(), value.size());
+        return 1;
+    }
+    else if (key == "isSpectator")
+    {
+        lua_pushboolean(L, player->IsSpectator());
         return 1;
     }
     else if (key == "battlepoints")

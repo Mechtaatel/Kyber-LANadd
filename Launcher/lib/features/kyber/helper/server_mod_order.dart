@@ -30,23 +30,28 @@ List<CollectionMod> mergeServerModOrder(
   return ordered;
 }
 
-/// Extra client cosmetics are allowed; only the host's required files/order
-/// must match the files already loaded into this game process.
-bool hasRequiredServerModOrder(
-  Iterable<String> loadedPaths,
-  Iterable<String> requiredPaths, {
+/// Compare the expanded selection with the snapshot taken at game launch.
+/// Server requirements and the selected client cosmetics are both included.
+bool hasSameModLoadOrder(
+  Iterable<CollectionMod> loadedMods,
+  Iterable<CollectionMod> requestedMods, {
   bool? windowsPaths,
 }) {
   final windows = windowsPaths ?? Platform.isWindows;
-  final required = requiredPaths.map((p) => _modPathKey(p, windows)).toList();
-  final requiredSet = required.toSet();
-  final loadedRequired = loadedPaths
-      .map((p) => _modPathKey(p, windows))
-      .where(requiredSet.contains)
-      .toList();
-  if (required.length != loadedRequired.length) return false;
-  for (var i = 0; i < required.length; i++) {
-    if (required[i] != loadedRequired[i]) return false;
+  final loaded = loadedMods.toList();
+  final requested = requestedMods.toList();
+  if (loaded.length != requested.length) return false;
+  for (var i = 0; i < loaded.length; i++) {
+    final a = loaded[i];
+    final b = requested[i];
+    if (a.filename == null ||
+        b.filename == null ||
+        _modPathKey(a.filename!, windows) !=
+            _modPathKey(b.filename!, windows) ||
+        a.name != b.name ||
+        a.version != b.version) {
+      return false;
+    }
   }
   return true;
 }

@@ -1,12 +1,9 @@
-import 'package:collection/collection.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:kyber/kyber.dart';
-import 'package:kyber_launcher/features/maxima/models/maxima_game_instance.dart';
 import 'package:kyber_launcher/features/mods/helper/mod_helper.dart';
 import 'package:kyber_launcher/features/server_browser/models/server_filter.dart';
 import 'package:kyber_launcher/features/server_browser/providers/server_browser_cubit.dart';
-import 'package:kyber_launcher/injection_container.dart';
 
 class ServerBrowserHelper {
   static bool canJoinServer(
@@ -21,31 +18,10 @@ class ServerBrowserHelper {
     final installed = server.mods.every(
       (m) => ModHelper.isInstalled(m.name, m.version, ignoreCorrupted: true),
     );
-    final gameRunning = sl.isRegistered<MaximaGameInstance>();
-
-    if (!gameRunning) {
-      return installed ||
-          ignoreInstalled &&
-              context.read<ServerBrowserCubit>().state.joiningServer == null;
-    }
-
-    final gameInstance = sl.get<MaximaGameInstance>();
-    final instanceGameplayMods = ModHelper.getGameplayMods(gameInstance.mods);
-
-    if (instanceGameplayMods.isEmpty && server.mods.isNotEmpty ||
-        server.mods.isEmpty && instanceGameplayMods.isNotEmpty) {
-      return false;
-    }
-
-    final mappedServerMods = server.mods
-        .map((e) => '${e.name}@${e.version}')
-        .toList();
-    final mappedInstanceMods = instanceGameplayMods
-        .map((e) => '${e.details.name}@${e.details.version}')
-        .toList();
-    return const ListEquality<String>().equals(
-      mappedServerMods,
-      mappedInstanceMods,
-    );
+    // The join handler checks the expanded launch snapshot and explains a
+    // mismatch. Comparing collection labels here silently disabled valid joins.
+    return installed ||
+        ignoreInstalled &&
+            context.read<ServerBrowserCubit>().state.joiningServer == null;
   }
 }

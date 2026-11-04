@@ -440,6 +440,7 @@ void MessageManagerDispatchMessageHk(void* inst, Message* message)
 
             ServerPlayerDisconnectedEvent* disconnectedEvent = new (FB_SERVER_ARENA) ServerPlayerDisconnectedEvent();
             disconnectedEvent->player = msg->m_player;
+            disconnectedEvent->playerId = msg->m_player->m_onlineId.m_nativeData;
             g_program->m_server->m_eventManager->QueueEvent(disconnectedEvent);
 
             if (g_program->m_scriptManager != nullptr)
