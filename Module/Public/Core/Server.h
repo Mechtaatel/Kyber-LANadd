@@ -14,6 +14,7 @@
 
 #include <Windows.h>
 #include <optional>
+#include <mutex>
 #include <string>
 #include <xhash>
 
@@ -33,6 +34,7 @@ struct ServerCreationInfo
     int maxPlayers;
     int maxSpectators = 4;
     bool lanOnly = false;
+    uint32_t port = 25200;
 
     static constexpr int MaxSlots = 64;
     bool HasValidCapacity() const
@@ -106,6 +108,7 @@ public:
     void PollLanDiscovery();
     void FillBrowserInfo(kyber_api::Server& info) const;
     void CloseLanDiscovery();
+    std::string DiscoverySnapshot();
     void Register(bool force = false, bool reuseId = false);
 
     void OnEvent(const Event& event) override;
@@ -146,8 +149,9 @@ public:
     std::optional<ServerCreationInfo> m_creationInfo;
     std::string m_serverId;
     bool m_onlineMode;
-    uintptr_t m_lanSocket = ~uintptr_t(0);
-    uint64_t m_lanNextResponse = 0;
+    std::mutex m_discoveryMutex;
+    std::string m_discoverySnapshot;
+    uint64_t m_nextDiscoverySnapshot = 0;
 
     // This means the server is running in Client-As-Server.
     // This isn't true if this is a dedicated server, use Program::m_isDedicatedServer.

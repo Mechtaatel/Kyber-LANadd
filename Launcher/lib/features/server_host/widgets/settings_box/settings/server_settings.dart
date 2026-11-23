@@ -35,6 +35,21 @@ class ServerSettings extends StatelessWidget {
                 ),
               ),
               KyberTableItem.custom(
+                title: 'UDP PORT',
+                builder: (_) => KyberFormInputField(
+                  name: 'port',
+                  validator: (value) {
+                    final port = int.tryParse(
+                      value?.toString() ?? '',
+                      radix: 10,
+                    );
+                    return port == null || port < 1 || port > 65535
+                        ? 'Enter a port from 1 to 65535'
+                        : null;
+                  },
+                ),
+              ),
+              KyberTableItem.custom(
                 title: 'MAX PLAYERS',
                 builder: (hovered) {
                   return FormBuilderField<int>(

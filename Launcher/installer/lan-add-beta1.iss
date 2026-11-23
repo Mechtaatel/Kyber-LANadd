@@ -46,6 +46,7 @@ OutputBaseFilename={#SetupOutputName}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+RestartApplications=no
 
 [Dirs]
 Name: "{commonappdata}\Kyber"; Permissions: users-modify
@@ -55,8 +56,20 @@ Name: "{commonappdata}\Kyber\LAN-Modules"; Permissions: users-modify
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
 
+[InstallDelete]
+Type: files; Name: "{app}\lan-module\*.dll"
+Type: files; Name: "{app}\lan-module\ca_root.pem"
+Type: files; Name: "{app}\lan-module\VanillaBundleAggregation.kb"
+Type: files; Name: "{app}\lan-module\ONLINE-COMPATIBILITY.json"
+Type: files; Name: "{app}\lan-module\VERSION"
+Type: files; Name: "{app}\lan-module\LAN-MODULE"
+Type: dirifempty; Name: "{app}\lan-module"
+
 [Files]
-Source: "{#BundleSourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#BundleSourceDir}\*"; Excludes: "lan-module\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+Source: "{#BundleSourceDir}\lan-module\*"; DestDir: "{commonappdata}\Kyber\LAN-Modules"; Flags: ignoreversion
+Source: "cleanup-module-cache.ps1"; DestDir: "{app}"; Flags: deleteafterinstall
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#AppExeName}"; AppUserModelID: "kyber.LANADD"
@@ -69,10 +82,33 @@ Root: HKCR; Subkey: "KyberLauncherLANADD.kmodfile\DefaultIcon"; ValueType: strin
 Root: HKCR; Subkey: "KyberLauncherLANADD.kmodfile\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExeName}"" ""%1"""; Flags: uninsdeletekey
 
 [Run]
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""{app}\cleanup-module-cache.ps1"""; Flags: runhidden waituntilterminated runasoriginaluser
 Filename: "{app}\{#AppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
 Filename: "{app}\{#AppExeName}"; Flags: nowait runasoriginaluser; Check: IsLanAddUpdate
 
 [Code]
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Command: String;
+  ExitCode: Integer;
+begin
+  Result := '';
+  { Maxima runs as a service and can keep its executable and runtime DLL locked. }
+  Command := '$ErrorActionPreference = ''Stop''; try { ' +
+    '$service = Get-Service -Name ''MaximaBackgroundService'' -ErrorAction SilentlyContinue; ' +
+    'if ($null -ne $service) { ' +
+    'if ($service.Status -ne ''Stopped'') { ' +
+    'Stop-Service -InputObject $service -NoWait; ' +
+    '$service.WaitForStatus(''Stopped'', [TimeSpan]::FromSeconds(30)); ' +
+    '} }; exit 0 } catch { exit 1 }';
+  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    '-NoProfile -NonInteractive -Command "' + Command + '"',
+    '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
+    Result := 'Could not start the Maxima service shutdown. Restart Windows and run setup again.'
+  else if ExitCode <> 0 then
+    Result := 'Could not stop MaximaBackgroundService. Close Battlefront II and KYBER, then stop the service or restart Windows before retrying.';
+end;
+
 function IsLanAddUpdate: Boolean;
 begin
   Result := ExpandConstant('{param:LANADDUPDATE|0}') = '1';

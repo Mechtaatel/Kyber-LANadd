@@ -32,14 +32,19 @@ class KyberServerHelper {
   }) async {
     // Selections/invite links may predate the last scan. Resolve LAN again
     // immediately before joining, including when an online row was selected.
-    if (!server.isLanOnly) {
-      final local = (await LanDiscovery().discover()).firstWhereOrNull(
-        (s) => s.id == server.id && !s.isLanOnly,
-      );
+    if (!server.isLan) {
+      final local =
+          (await LanDiscovery().discover(
+            hostPort: Preferences.hostServer.port,
+          )).firstWhereOrNull(
+            (s) => s.id == server.id && !s.isLanOnly,
+          );
       if (local != null) server = LanDiscovery.preferLan(server, local);
     }
-    if (sl.isRegistered<MaximaGameInstance>() &&
-        sl.get<MaximaGameInstance>().lanOnly != server.isLanOnly) {
+    final runningGame = sl.isRegistered<MaximaGameInstance>()
+        ? sl.get<MaximaGameInstance>()
+        : null;
+    if (runningGame != null && runningGame.lanOnly != server.isLanOnly) {
       NotificationService.error(
         message: 'Restart the game to switch between LAN-only and online play.',
       );

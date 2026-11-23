@@ -32,6 +32,7 @@ class _ServerSettingsBoxState extends State<ServerSettingsBox> {
     return FormBuilder(
       key: hostingForm,
       initialValue: {
+        'port': Preferences.hostServer.port.toString(),
         'lanOnly': Preferences.hostServer.lanOnly,
         'serverName': Preferences.hostServer.name,
         'description': Preferences.hostServer.description,
@@ -42,6 +43,12 @@ class _ServerSettingsBoxState extends State<ServerSettingsBox> {
       onChanged: () async {
         final state = context.read<ModerationCubit>().state;
         if (!state.selected && state.id == null) {
+          final port = int.tryParse(
+            hostingForm.currentState?.fields['port']?.value?.toString() ?? '',
+            radix: 10,
+          );
+          if (port != null && port > 0 && port <= 65535)
+            Preferences.hostServer.port = port;
           final lanOnly = hostingForm.currentState?.fields['lanOnly']?.value;
           if (lanOnly is bool) Preferences.hostServer.lanOnly = lanOnly;
           Preferences.hostServer.name =

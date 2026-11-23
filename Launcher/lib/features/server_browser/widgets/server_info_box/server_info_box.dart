@@ -1,6 +1,7 @@
 import 'package:background_downloader/background_downloader.dart';
 import 'package:collection/collection.dart';
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart' as mt;
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -31,6 +32,8 @@ import 'package:kyber_launcher/injection_container.dart';
 import 'package:kyber_launcher/main.dart';
 import 'package:kyber_launcher/shared/ui/elements/kyber_page_selector.dart';
 import 'package:kyber_launcher/shared/ui/ui.dart';
+
+const _serverMetricWidth = 55.0;
 
 class ServerInfoBox extends StatefulWidget {
   const ServerInfoBox({
@@ -153,14 +156,22 @@ class _ServerInfoBoxState extends State<ServerInfoBox> {
 
   @override
   void didUpdateWidget(covariant ServerInfoBox oldWidget) {
+    super.didUpdateWidget(oldWidget);
     if (oldWidget.server != widget.server) {
+      final next = widget.server.serverInfo;
+      if (widget.server is SingleServer &&
+          oldWidget.server is SingleServer &&
+          next.id == serverInfo.id &&
+          next.region == serverInfo.region &&
+          listEquals(next.mods, serverInfo.mods)) {
+        serverInfo = next;
+        return;
+      }
       selectedRegion = null;
       serverInfo = widget.server.serverInfo;
       _regionResolved = false;
       _setCollectionData();
     }
-
-    super.didUpdateWidget(oldWidget);
   }
 
   void _switchInstance(int page) {
@@ -343,12 +354,13 @@ class _ServerInfoBoxState extends State<ServerInfoBox> {
                                   ),
                                 ),
                               SizedBox(
-                                width: 55,
+                                width: _serverMetricWidth,
                                 child: _Badge(
                                   text:
                                       '${serverInfo.playerCount}/${serverInfo.maxPlayerCount}',
                                 ),
                               ),
+                              _ServerPing(server: serverInfo),
                               if (regions.length <= 1 &&
                                   (serverInfo.isLan ||
                                       (serverInfo.region.isNotEmpty &&
@@ -455,7 +467,9 @@ class _ServerInfoBoxState extends State<ServerInfoBox> {
     );
   }
 
-  Future<void> _joinServer({bool spectator = false}) async {
+  Future<void> _joinServer({
+    bool spectator = false,
+  }) async {
     final cubit = context.read<ServerBrowserCubit>();
     if (cubit.state.joiningServer != null) {
       return;
@@ -835,8 +849,65 @@ class _ModDownloadProgress extends StatelessWidget {
   }
 }
 
+class _ServerPing extends StatelessWidget {
+  const _ServerPing({required this.server});
+  final Server server;
+
+  @override
+  Widget build(BuildContext context) {
+    var ping = server.discoveryPing;
+    if (!server.isLan && server.requiresProxy) {
+      final proxies = context.watch<KyberProxyCubit>().state;
+      final id = server.meta['pinned_proxy_id'] ?? proxies.selectedProxy;
+      ping = proxies.proxies.firstWhereOrNull((p) => p.proxy.id == id)?.ping;
+    }
+    return Tooltip(
+      message: ping == null
+          ? 'Latency unavailable'
+          : server.isLan
+          ? 'Discovery round trip'
+          : 'Latency to Kyber proxy',
+      child: SizedBox(
+        width: _serverMetricWidth,
+        child: _Badge(
+          horizontalPadding: 3,
+          icon: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(mt.Icons.signal_cellular_alt, size: 12),
+              const SizedBox(width: 2),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    ping == null ? '—' : '$ping ms',
+                    style: _Badge.textStyle,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Badge extends StatelessWidget {
-  const _Badge({this.text, this.icon, super.key});
+  const _Badge({this.text, this.icon, this.horizontalPadding = 10, super.key});
+
+  final double horizontalPadding;
+
+  static const textStyle = TextStyle(
+    fontSize: 13,
+    fontWeight: .w700,
+    fontFamily: FontFamily.battlefrontUI,
+    height: 1,
+    color: kWhiteColor,
+    fontFeatures: [
+      .tabularFigures(),
+    ],
+  );
 
   final String? text;
   final Widget? icon;
@@ -846,7 +917,7 @@ class _Badge extends StatelessWidget {
     assert(text != null || icon != null, 'Badge must have either text or icon');
 
     return Container(
-      padding: const .symmetric(horizontal: 10, vertical: 6),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 6),
       decoration: BoxDecoration(
         color: kControlBackgroundColor,
         border: .all(color: kButtonBorder, width: 1.5),
@@ -861,16 +932,7 @@ class _Badge extends StatelessWidget {
               text!,
               overflow: .ellipsis,
               maxLines: 1,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: .w700,
-                fontFamily: FontFamily.battlefrontUI,
-                height: 1,
-                color: kWhiteColor,
-                fontFeatures: [
-                  .tabularFigures(),
-                ],
-              ),
+              style: textStyle,
             ),
       ),
     );

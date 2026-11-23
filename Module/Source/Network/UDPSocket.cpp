@@ -6,6 +6,7 @@
 #include <Core/Program.h>
 #include <Network/SocketManager.h>
 #include <Network/LanAddress.h>
+#include <Network/LanJoin.h>
 #include <Network/ProxyRoute.h>
 #include <Utilities/ErrorUtils.h>
 #include <Utilities/PlatformUtils.h>
@@ -142,6 +143,63 @@ bool UDPSocket::Send(uint8_t* buffer, int bufferSize, unsigned int flags)
     return true;
 }
 
+// Discovery is multiplexed on the bound game socket. Consume only our framed
+// requests; Frostbite never sees them or adopts the browser's reply address.
+bool UDPSocket::HandleDiscovery(const uint8_t* data, int size, const sockaddr_in& peer)
+{
+    static constexpr char magic[] = "KYBER-LAN-1:";
+    constexpr int querySize = sizeof(magic) - 1 + 16;
+    constexpr int challengeSize = querySize + sizeof(uint64_t);
+    if ((size != querySize && size != challengeSize) || memcmp(data, magic, sizeof(magic) - 1) != 0)
+        return false;
+
+    const bool local = IsLanPeer(peer.sin_addr.s_addr);
+    if (!local && !g_program->m_server->m_onlineMode && !IndependentLanEnabled()) return true;
+    const auto now = GetTickCount64();
+    if (now >= m_discoveryCleanup)
+    {
+        for (auto it = m_discoveryPeers.begin(); it != m_discoveryPeers.end();)
+        {
+            if (now - it->second.lastRequest >= 2000) it = m_discoveryPeers.erase(it);
+            else ++it;
+        }
+        m_discoveryCleanup = now + 1000;
+    }
+    const uint64_t endpoint = (uint64_t{peer.sin_addr.s_addr} << 16) | peer.sin_port;
+    if (m_discoveryPeers.find(endpoint) == m_discoveryPeers.end() && m_discoveryPeers.size() >= 256) return true;
+    auto& state = m_discoveryPeers[endpoint];
+    const auto* dest = reinterpret_cast<const sockaddr*>(&peer);
+    if (size == challengeSize)
+    {
+        if (local || !state.cookie || now - state.lastRequest >= 2000 ||
+            memcmp(data + querySize, &state.cookie, sizeof(state.cookie)) != 0) return true;
+        state.cookie = 0;
+    }
+    else
+    {
+        if (state.lastRequest && now - state.lastRequest < 50) return true;
+        state.lastRequest = now;
+        if (!local)
+        {
+            // Confirm the return path before sending a potentially large mod list.
+            state.cookie = CreateLanPlayerId().value_or(0);
+            if (!state.cookie) return true;
+            std::string challenge(reinterpret_cast<const char*>(data), querySize);
+            challenge.append(reinterpret_cast<const char*>(&state.cookie), sizeof(state.cookie));
+            sendto(m_socketHandle, challenge.data(), challengeSize, 0, dest, sizeof(peer));
+            return true;
+        }
+    }
+
+    auto snapshot = g_program->m_server->DiscoverySnapshot();
+    if (!snapshot.empty())
+    {
+        snapshot.insert(0, reinterpret_cast<const char*>(data), querySize);
+        sendto(m_socketHandle, snapshot.data(), static_cast<int>(snapshot.size()), 0, dest, sizeof(peer));
+    }
+    return true;
+}
+
 int UDPSocket::ReceiveFromWhen(uint8_t* buffer, int bufferSize, unsigned int& when)
 {
     int addressSize = sizeof(sockaddr_in);
@@ -166,22 +224,25 @@ int UDPSocket::ReceiveFromWhen(uint8_t* buffer, int bufferSize, unsigned int& wh
     else if (m_socketHandle != INVALID_SOCKET) // Local
     {
         when = NetTick();
-        recvSize = recvfrom(m_socketHandle, (char*)buffer, bufferSize, 0, (sockaddr*)&addr, &addressSize);
-        if (recvSize < 0)
+        for (int consumed = 0;;)
         {
-            int error = WSAGetLastError();
-            if (error != WSAEWOULDBLOCK)
+            recvSize = recvfrom(m_socketHandle, (char*)buffer, bufferSize, 0, (sockaddr*)&addr, &addressSize);
+            if (recvSize < 0)
             {
-                KYBER_LOG(Debug, "Error receiving data: " << error);
+                const int error = WSAGetLastError();
+                if (error != WSAEWOULDBLOCK) KYBER_LOG(Debug, "Error receiving data: " << error);
+                return recvSize;
             }
 
-            return recvSize;
-        }
-
-        if (m_direction == ProtocolDirection::Clientbound && !g_program->m_server->m_onlineMode &&
-            !IsLanPeer(addr.sin_addr.s_addr))
-        {
-            return -1;
+            if (m_direction != ProtocolDirection::Clientbound) break;
+            if (HandleDiscovery(buffer, recvSize, addr))
+            {
+                if (m_blockingMode || ++consumed == 8) return -1;
+                continue;
+            }
+            if (!g_program->m_server->m_onlineMode && !IsLanPeer(addr.sin_addr.s_addr) && !IndependentLanEnabled())
+                return -1;
+            break;
         }
     }
     else

@@ -16,15 +16,10 @@ already be installed. LAN mode skips Kyber module updates and preloaded-mod
 downloads, so it does not replace the locally built module with an upstream one.
 
 Portable fork bundles include a `lan-module` directory next to the launcher/CLI.
-For Windows online play, the launcher checks the official module release channel
-and downloads updates into `%ProgramData%/Kyber/LAN-Modules/online`. Downloads are
-staged and validated before activation; interrupted transfers keep the last
-working release. This cache is separate from the stock launcher's module folder.
-The bundled Unicode-enabled DLL is used in a separate cache only when
-`ONLINE-COMPATIBILITY.json` matches both the official release ID and the SHA-256
-of both DLLs. Newer official releases use their own DLL until a compatible LAN ADD
-build is available. The launcher never overwrites the stock module or restores
-an obsolete DLL backup when uninstalled.
+The Windows installer puts the fork module in `%ProgramData%/Kyber/LAN-Modules`.
+For online play, the launcher downloads updates for the selected official
+module channel into `%ProgramData%/Kyber/Module`. Downloads are staged and
+validated before replacing the installed files.
 Keep the entire LAN bundle with
 Kyber.dll, vivoxsdk.dll, ca_root.pem and VanillaBundleAggregation.kb. Updating the
 fork module requires installing a newer complete fork bundle. Do not place the
@@ -52,8 +47,8 @@ releases whose title starts with `[BROKEN]` or `BROKEN`, and releases containing
 
 Under New Server, **LAN ONLY** is available with OFF/ON buttons.
 Leave it disabled for normal public hosting. Online sessions use the current
-official module or its verified compatible Unicode-enabled DLL; LAN-only hosts
-use the bundled fork DLL, advertise locally and skip Kyber services.
+official module. LAN-only hosts use the bundled fork DLL, advertise locally
+and skip Kyber services.
 LAN-only hosts do not register with Kyber or connect to Kyber proxies. Players
 connect directly to the host. LAN-only sessions do not use Kyber join tokens,
 global bans, verified Kyber identities, public statistics or Vivox voice chat.
@@ -71,8 +66,7 @@ server official status. LAN-only hosts are not grouped using public hosting IDs.
 The route is checked again before joining. By default, a hybrid public/LAN server
 requires a valid Kyber login and join token. Hosts can explicitly enable the
 independent admission route described below without removing public hosting.
-The CLI retains its existing bundle-first module selection and is not changed
-by this Windows launcher compatibility workaround.
+The CLI uses the bundled LAN module if present.
 Public API failures retain the last successful public snapshot for up to two
 minutes with an on-screen warning; background refresh no longer hides the list.
 
@@ -191,9 +185,8 @@ folder and put the repaired file in its place. Keep exactly one `.kbcollection`
 there. The CLI reports exact expected paths if
 the names still differ. Client-only cosmetic mods can differ;
 level-affecting game resources must be compatible. If the
-same host is listed on physical LAN and
-Radmin, use the physical-LAN address unless UDP 25200 is also allowed through
-the VPN firewall; discovery on 25202 alone does not prove the game route works.
+same host is listed on physical LAN and Radmin, allow its configured game UDP
+port on the interface used by players.
 For a long-running service, replace `--rm` with `-d --restart unless-stopped`
 and use `docker logs -f` to inspect startup. Avoid enabling verbose CLI logging
 while passing EA credentials on the command line.
@@ -237,22 +230,23 @@ Install and start with `systemctl daemon-reload` and
 
 ## Network requirements
 
-Allow inbound UDP **25200** (game) and **25202** (discovery) from your trusted LAN
-on the host. Do not forward these ports on the internet router. Discovery uses
-limited IPv4 broadcast plus loopback, and accepts private, link-local and
-loopback IPv4 sources. Radmin 26/8 is also supported when the local machine has
-a 26/8 adapter; a directed 26.255.255.255 probe supplements limited broadcast.
-26/8 is not an RFC1918 private network. Restrict firewall rules to trusted VPN
-peers as well as your physical LAN. IPv6, routed VLANs, broadcast-blocking Wi-Fi
-isolation and VPNs that do not carry broadcasts are not covered. One discoverable server
-per machine/network namespace is supported with these fixed ports.
+Gameplay and discovery share one UDP socket, **25200** by default. Change
+**Host → Server → UDP Port**, pass `--server-port 30000` to `start_server`, or set
+`KYBER_SERVER_PORT=30000` in the container. Each instance on the same host needs
+its own available port. Allow that UDP port on the interface used by players.
 
-The query is ASCII `KYBER-LAN-1:` followed by a random 16-byte nonce. The response
-echoes that query and appends a `kyber_api.Server` protobuf. The launcher takes
-the IP from the UDP sender, sanitizes privilege/grouping metadata, deduplicates
-the response, and discards it on the next scan if the host no longer responds.
-The game thread polls a nonblocking discovery socket, bounds work per tick and
-limits responses. The nonce correlates responses; it does not authenticate hosts.
+The browser broadcasts on the default port and checks 25202 for older hosts.
+For a custom port or a network that does not carry broadcasts, use **+** beside
+Refresh and enter the reachable IPv4 address and game port, e.g.
+`192.168.0.155:30000`. Confirmed addresses are saved and checked on refresh.
+With UDP port forwarding, enter the external port. Local-only hosts accept
+private LAN and supported VPN peers. For an independently accessible public
+host, enable `KYBER_LAN_INDEPENDENT=1` and forward its UDP port if needed.
+
+Discovery uses a random 16-byte nonce prefixed with `KYBER-LAN-1:`. The game
+socket consumes these requests before gameplay parsing. Non-local clients echo
+a server-issued cookie before receiving server metadata. The launcher checks
+the reply address, port and nonce and measures the discovery round-trip time.
 
 ## Manual release checks
 

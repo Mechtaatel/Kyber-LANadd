@@ -199,7 +199,7 @@ void Server::Start(const ServerCreationInfo& info, bool changeState)
 
     NetworkSettings* networkSettings = Settings<NetworkSettings>("Network");
     networkSettings->MaxClientCount = info.maxPlayers + info.maxSpectators;
-    networkSettings->ServerPort = 25200;
+    networkSettings->ServerPort = info.port;
     networkSettings->UseFrameManager = true;
 
     KYBER_LOG(Info, "[Server] Protocol Version " << networkSettings->ProtocolVersion << " TitleId " << networkSettings->TitleId);

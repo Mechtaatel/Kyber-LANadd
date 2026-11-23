@@ -6,6 +6,7 @@ import 'package:kyber_launcher/features/kyber/providers/kyber_api_status_cubit.d
 import 'package:kyber_launcher/features/lightswitch/models/status.dart';
 import 'package:kyber_launcher/features/server_browser/constants/modes.dart';
 import 'package:kyber_launcher/features/server_browser/models/server_entry.dart';
+import 'package:kyber_launcher/features/server_browser/dialogs/add_server_dialog.dart';
 import 'package:kyber_launcher/features/server_browser/models/server_filter.dart';
 import 'package:kyber_launcher/features/server_browser/models/server_list_state.dart';
 import 'package:kyber_launcher/features/server_browser/providers/server_browser_cubit.dart';
@@ -58,16 +59,19 @@ class _ServerBrowserState extends State<ServerBrowser> {
                 }
 
                 final serverId = selectedServer.serverInfo.id;
-                final stillPresent = state.servers.any(
-                  (s) => s is GroupedServer
-                      ? s.group.servers.any(
-                          (i) => i.id == serverId,
-                        )
-                      : s.serverInfo.id == serverId,
-                );
-
-                if (!stillPresent) {
-                  context.read<ServerBrowserCubit>().clearServer();
+                final current = state.servers
+                    .where(
+                      (s) => s is GroupedServer
+                          ? s.group.servers.any((i) => i.id == serverId)
+                          : s.serverInfo.id == serverId,
+                    )
+                    .firstOrNull;
+                final browser = context.read<ServerBrowserCubit>();
+                if (current == null) {
+                  browser.clearServer();
+                } else if (current is SingleServer &&
+                    current.serverInfo != selectedServer.serverInfo) {
+                  browser.selectServer(current);
                 }
               },
               listenWhen: (previous, current) => current is ServerListLoaded,
@@ -127,6 +131,24 @@ class _HeaderBar extends StatelessWidget {
                 onChanged: (value) =>
                     context.read<ServerListCubit>().loadServers(),
                 selectedIndex: -1,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Tooltip(
+              message: 'Add server by IP',
+              child: SizedBox(
+                width: 40,
+                child: KyberTabBar(
+                  tabs: const [Icon(FluentIcons.add, size: 16)],
+                  selectedIndex: -1,
+                  onChanged: (_) {
+                    final servers = context.read<ServerListCubit>();
+                    showKyberDialog(
+                      context: context,
+                      builder: (_) => AddServerDialog(servers: servers),
+                    );
+                  },
+                ),
               ),
             ),
             const SizedBox(width: 15),

@@ -601,6 +601,7 @@ void GameSimulationInitDedicatedServerHk(void* inst, void* createInfo)
     const ServerCreationInfo& capacity = *g_program->m_server->m_creationInfo;
     NetworkSettings* networkSettings = Settings<NetworkSettings>("Network");
     networkSettings->MaxClientCount = capacity.maxPlayers + capacity.maxSpectators;
+    networkSettings->ServerPort = capacity.port;
 
     GameSettings* gameSettings = Settings<GameSettings>("Game");
     gameSettings->MaxSpectatorCount = capacity.maxSpectators;

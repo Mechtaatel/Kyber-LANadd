@@ -255,6 +255,9 @@ class Customization {
 }
 
 class HostServer {
+  int get port => box.get('hostUdpPort', defaultValue: 25200) as int;
+  set port(int value) => box.put('hostUdpPort', value);
+
   bool get lanOnly => box.get('hostLanOnly', defaultValue: false) as bool;
 
   set lanOnly(bool value) => box.put('hostLanOnly', value);

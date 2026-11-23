@@ -160,23 +160,24 @@ Future<void> loadCerts() async {
 String? launcherVersion;
 
 void main() async {
-  final rustLibraryPath = _findRustLibraryPath();
-  if (Platform.isWindows && !kDebugMode) {
-    if (rustLibraryPath == null) {
-      showRustLibMissingDialog();
-      exit(0);
-    }
-  }
-
-  await Rhttp.init();
-  await MaximaLib.init(
-    externalLibrary: rustLibraryPath == null
-        ? null
-        : ExternalLibrary.open(rustLibraryPath),
-  );
-
+  var startupComplete = false;
   await runZonedGuarded(
     () async {
+      final rustLibraryPath = _findRustLibraryPath();
+      if (Platform.isWindows && !kDebugMode) {
+        if (rustLibraryPath == null) {
+          showRustLibMissingDialog();
+          exit(0);
+        }
+      }
+
+      await Rhttp.init();
+      await MaximaLib.init(
+        externalLibrary: rustLibraryPath == null
+            ? null
+            : ExternalLibrary.open(rustLibraryPath),
+      );
+
       WidgetsFlutterBinding.ensureInitialized();
       MediaKit.ensureInitialized();
 
@@ -222,12 +223,18 @@ void main() async {
       }
 
       runApp(const App());
+      await WindowHelper.completedSetup.future;
+      startupComplete = true;
       Logger('bootstrap').info(
         'Started in ${DateTime.now().difference(started).inMilliseconds}ms',
       );
     },
     (exception, stackTrace) async {
       Logger.root.severe('Uncaught exception:', exception, stackTrace);
+      if (!startupComplete && Platform.isWindows) {
+        showStartupErrorDialog(exception);
+        exit(1);
+      }
       await Sentry.captureException(exception, stackTrace: stackTrace);
     },
   );

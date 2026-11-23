@@ -33,6 +33,12 @@ ServerUnaryReactor* ServerInterfaceService::StartServer(
     info.description = request->description();
     info.password = request->password();
     info.lanOnly = request->lanonly();
+    if (request->has_port()) info.port = request->port();
+    if (info.port == 0 || info.port > 65535)
+    {
+        reactor->Finish(Status(grpc::StatusCode::INVALID_ARGUMENT, "Invalid UDP port"));
+        return reactor;
+    }
 
     info.maxPlayers = request->maxplayers();
     info.maxSpectators = request->has_maxspectators() ? request->maxspectators() : 4;

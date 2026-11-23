@@ -1,5 +1,8 @@
 // Copyright Armchair Developers / Sean Kahler. Licensed under GPLv3.
 
+#include <charconv>
+#include <cstdlib>
+#include <cstring>
 #include <optional>
 #define _WINSOCKAPI_
 #include <RPC/API/Launcher.h>
@@ -68,6 +71,22 @@ void LauncherInterface::Initialize() const
         info.description = server.description();
         info.password = server.password();
         info.lanOnly = server.lanonly();
+        if (server.has_port())
+        {
+            info.port = server.port();
+        }
+        else if (const char* value = std::getenv("KYBER_SERVER_PORT"))
+        {
+            // An existing CLI/container can configure the new DLL without a new RPC client.
+            const char* end = value + std::strlen(value);
+            auto parsed = std::from_chars(value, end, info.port);
+            if (parsed.ec != std::errc{} || parsed.ptr != end) info.port = 0;
+        }
+        if (info.port == 0 || info.port > 65535)
+        {
+            KYBER_LOG(Error, "[Server] Invalid UDP port");
+            return;
+        }
         if (info.lanOnly && !info.password.empty())
         {
             KYBER_LOG(Error, "LAN-only servers do not support passwords yet");

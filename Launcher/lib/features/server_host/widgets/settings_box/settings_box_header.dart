@@ -322,6 +322,7 @@ class SettingsBoxHeader extends StatelessWidget {
                             }
 
                             final startRequest = StartServerRequest(
+                              port: int.parse(form.value['port'] as String),
                               lanOnly: lanOnly,
                               name: form.value['serverName'] as String,
                               description: form.value['description'] as String?,

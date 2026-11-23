@@ -10,6 +10,7 @@
 #include <Utilities/PlatformUtils.h>
 #include <Utilities/MemoryUtils.h>
 #include <Core/Sentry.h>
+#include <Core/CrashDiagnostics.h>
 #include <SDK/Funcs.h>
 
 #include <processthreadsapi.h>
@@ -159,8 +160,16 @@ uint64_t Win32BufferReadExHk(void* inst, void* destination, int64_t byteCount)
 BOOL TerminateProcessHk(HANDLE hProcess, UINT uExitCode)
 {
     static const auto trampoline = HookManager::Call(TerminateProcessHk);
-    KYBER_LOG(Info, "Process terminated");
+    if (GetProcessId(hProcess) == GetCurrentProcessId()) CaptureAbnormalProcessExit(uExitCode);
+    KYBER_LOG(Info, "Process terminated; exit code: " << uExitCode);
     return trampoline(hProcess, uExitCode);
+}
+
+void NTAPI RtlExitUserProcessHk(LONG status)
+{
+    static const auto trampoline = HookManager::Call(RtlExitUserProcessHk);
+    CaptureAbnormalProcessExit(static_cast<DWORD>(status));
+    trampoline(status);
 }
 
 TL_DECLARE_FUNC(0x146C25060, uint32_t, getNetworkableClassId, const int category, const int type);
@@ -338,6 +347,16 @@ void InitializeDebugHooks()
     for (HookTemplate& hook : hookOffsets)
     {
         HookManager::CreateHook(hook.offset, hook.hook);
+    }
+
+    if (g_program->m_isDedicatedServer)
+    {
+        const auto exitProcess = GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlExitUserProcess");
+        if (exitProcess)
+        {
+            HookManager::CreateHook(exitProcess, RtlExitUserProcessHk);
+            KYBER_LOG(Info, "[CrashDiagnostics] Process-exit capture and bounded memory snapshots enabled");
+        }
     }
 
     // Dedicated mode uses Frostbite's null renderer; do not install hooks

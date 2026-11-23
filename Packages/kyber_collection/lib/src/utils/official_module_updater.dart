@@ -20,17 +20,6 @@ class OfficialModuleUpdater {
   static bool validVersion(String value) =>
       RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$').hasMatch(value);
 
-  Directory get activeDirectory {
-    final pointer = File(p.join(root.path, 'ACTIVE'));
-    if (!pointer.existsSync())
-      return Directory(p.join(root.path, 'uninstalled'));
-    final version = pointer.readAsStringSync().trim();
-    if (!validVersion(version)) {
-      return Directory(p.join(root.path, 'uninstalled'));
-    }
-    return Directory(p.join(root.path, version));
-  }
-
   static Future<bool> complete(Directory directory, String version) async {
     final marker = File(p.join(directory.path, 'VERSION'));
     if (!await marker.exists() ||
@@ -86,7 +75,7 @@ class OfficialModuleUpdater {
     Directory? staging;
     try {
       await lock.lock(FileLock.blockingExclusive);
-      final destination = Directory(p.join(root.path, version));
+      final destination = root;
       if (!await complete(destination, version)) {
         staging = await root.createTemp('.download-');
         final zip = File(p.join(staging.path, 'module.zip'));
@@ -115,27 +104,15 @@ class OfficialModuleUpdater {
           throw const FormatException('Official module archive is incomplete');
         }
 
-        Directory? previous;
-        if (await destination.exists()) {
-          previous = await destination.rename(p.join(staging.path, 'previous'));
+        // Invalidate VERSION first so an interrupted install is repaired on retry.
+        // Publish VERSION last, once every verified file is in place.
+        final marker = File(p.join(destination.path, 'VERSION'));
+        if (await marker.exists()) await marker.delete();
+        for (final name in [...requiredFiles, 'VERSION']) {
+          await File(
+            p.join(payload.path, name),
+          ).rename(p.join(destination.path, name));
         }
-        try {
-          await payload.rename(destination.path);
-        } on Object {
-          if (previous != null) await previous.rename(destination.path);
-          rethrow;
-        }
-      }
-      // Publish only after every payload file and its CRC has been verified.
-      // A failed transfer never changes the active, usable release.
-      final pointerStage = await root.createTemp('.activate-');
-      try {
-        final pointer = await File(
-          p.join(pointerStage.path, 'ACTIVE'),
-        ).writeAsString(version, flush: true);
-        await pointer.rename(p.join(root.path, 'ACTIVE'));
-      } finally {
-        await pointerStage.delete(recursive: true);
       }
       return destination;
     } finally {

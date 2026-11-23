@@ -12,6 +12,7 @@ import 'package:kyber_launcher/features/maxima/providers/maxima_rtm_cubit.dart';
 import 'package:kyber_launcher/features/server_browser/helpers/server_browser_helper.dart';
 import 'package:kyber_launcher/features/server_browser/models/server_entry.dart';
 import 'package:kyber_launcher/features/server_browser/providers/server_browser_cubit.dart';
+import 'package:kyber_launcher/features/server_browser/providers/server_list_cubit.dart';
 import 'package:kyber_launcher/gen/assets.gen.dart';
 import 'package:kyber_launcher/gen/fonts.gen.dart';
 import 'package:kyber_launcher/injection_container.dart';
@@ -30,6 +31,8 @@ final Map<String, String> regionIcons = {
 };
 
 class ServerListEntry extends StatelessWidget {
+  static const _thumbnailSize = Size(150, 65);
+
   const ServerListEntry({
     required this.index,
     required this.hoveredIndex,
@@ -75,31 +78,73 @@ class ServerListEntry extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hovered = hoveredIndex == index;
     final serverInfo = server.serverInfo;
-
+    final hovered = !serverInfo.isSavedOffline && hoveredIndex == index;
+    final edge = BorderSide(color: hovered ? kActiveColor : decoColor, width: 2);
+    final frame = BoxDecoration(
+      border: Border(
+        top: index == 0 ? edge : BorderSide.none,
+        left: edge,
+        right: edge,
+        bottom: hoveredIndex == index + 1
+            ? BorderSide(color: kActiveColor, width: 2)
+            : edge,
+      ),
+    );
+    if (serverInfo.isSavedOffline) {
+      final address = '${serverInfo.ip}:${serverInfo.port}';
+      return Container(
+        decoration: frame,
+        padding: const EdgeInsets.only(right: 12),
+        child: Row(
+          children: [
+            SizedBox.fromSize(
+              size: _thumbnailSize,
+              child: ClipRect(
+                child: SvgPicture.asset(
+                  'assets/icons/server-offline.svg',
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    serverInfo.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    'OFFLINE   $address',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: kInactiveColor),
+                  ),
+                ],
+              ),
+            ),
+            Tooltip(
+              message: 'Remove saved address',
+              child: IconButton(
+                icon: const Icon(FluentIcons.delete, size: 16),
+                onPressed: () =>
+                    context.read<ServerListCubit>().forgetEndpoint(address),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return AnimatedContainer(
       duration: const Duration(milliseconds: 150),
-      decoration: BoxDecoration(
-        border: Border(
-          top: index == 0
-              ? BorderSide(color: hovered ? kActiveColor : decoColor, width: 2)
-              : BorderSide.none,
-          left: BorderSide(color: hovered ? kActiveColor : decoColor, width: 2),
-          right: BorderSide(
-            color: hovered ? kActiveColor : decoColor,
-            width: 2,
-          ),
-          bottom: BorderSide(
-            color: hovered || hoveredIndex == index + 1
-                ? kActiveColor
-                : decoColor,
-            width: 2,
-          ),
-        ),
-      ),
+      decoration: frame,
       child: SizedBox(
-        height: 65,
+        height: _thumbnailSize.height,
         child: GestureDetector(
           onTap:
               onClick ??
@@ -134,9 +179,8 @@ class ServerListEntry extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    SizedBox(
-                      width: 150,
-                      height: 65,
+                    SizedBox.fromSize(
+                      size: _thumbnailSize,
                       child: Builder(
                         builder: (context) {
                           if (serverInfo.mapImageHash.isNotEmpty) {

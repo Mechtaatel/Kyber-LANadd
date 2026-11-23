@@ -46,6 +46,10 @@ if command -v sha256sum >/dev/null 2>&1; then
 fi
 if command -v ss >/dev/null 2>&1; then
   printf '\nLAN UDP sockets (empty until server is listening):\n'
-  ss -H -lun '( sport = :25200 or sport = :25202 )'
+  port=${KYBER_SERVER_PORT:-25200}
+  case "$port" in
+    *[!0-9]*) printf 'Invalid KYBER_SERVER_PORT\n' >&2; exit 1 ;;
+  esac
+  ss -H -lun "sport = :$port"
 fi
 printf '\nThis report does not verify game startup. Kyber started is a license event.\n'

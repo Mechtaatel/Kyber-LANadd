@@ -69,7 +69,7 @@ class ServerBrowserCubit extends Cubit<ServerBrowserState> {
     if (_joining) return;
 
     final serverInfo = server ?? state.selectedServer?.serverInfo;
-    if (serverInfo == null) return;
+    if (serverInfo == null || serverInfo.isSavedOffline) return;
 
     _joining = true;
     try {

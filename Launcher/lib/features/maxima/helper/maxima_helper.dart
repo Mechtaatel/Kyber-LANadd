@@ -7,7 +7,6 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge.dart';
 import 'package:kyber/kyber.dart';
 import 'package:kyber_collection/kyber_collection.dart';
 import 'package:kyber_launcher/core/services/app_settings.dart';
-import 'package:kyber_launcher/core/services/module_launch_directory.dart';
 import 'package:kyber_launcher/core/services/notification_service.dart';
 import 'package:kyber_launcher/core/services/windows_env.dart';
 import 'package:kyber_launcher/features/frosty/dialogs/frosty_pack_selector_dialog.dart';
@@ -180,9 +179,7 @@ class MaximaHelper {
                 .where((mod) => !mod.isCollection)
                 .map((mod) => mod.toCollectionMod()),
           );
-    var moduleDirectory = lanOnly
-        ? FileHelper.getGameModuleDirectory(lanOnly: true)
-        : await FileHelper.prepareOnlineModule();
+    final moduleDirectory = FileHelper.getGameModuleDirectory(lanOnly: lanOnly);
     final missingFiles = <String>[];
     for (final name in FileHelper.modulePayloadFiles) {
       final file = File(p.join(moduleDirectory.path, name));
@@ -196,18 +193,7 @@ class MaximaHelper {
         'Restore the complete launcher package. Module folder: ${moduleDirectory.path}',
       );
     }
-    if (Platform.isWindows) {
-      moduleDirectory = await prepareModuleLaunchDirectory(moduleDirectory);
-    }
-    var versionFile = File(
-      p.join(
-        moduleDirectory.path,
-        lanOnly ? 'VERSION' : 'LAN-ADD-VERSION',
-      ),
-    );
-    if (!await versionFile.exists()) {
-      versionFile = File(p.join(moduleDirectory.path, 'VERSION'));
-    }
+    final versionFile = File(p.join(moduleDirectory.path, 'VERSION'));
     final moduleVersion = await versionFile.exists()
         ? (await versionFile.readAsString()).trim()
         : 'unknown';

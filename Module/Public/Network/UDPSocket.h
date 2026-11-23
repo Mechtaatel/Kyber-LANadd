@@ -11,6 +11,7 @@
 #include <cstring>
 #include <cstdint>
 #include <list>
+#include <unordered_map>
 
 #include <ws2tcpip.h>
 
@@ -158,6 +159,14 @@ public:
 
 private:
     friend class SocketManager;
+    bool HandleDiscovery(const uint8_t* data, int size, const sockaddr_in& peer);
+    struct DiscoveryPeer
+    {
+        uint64_t lastRequest = 0;
+        uint64_t cookie = 0;
+    };
+    std::unordered_map<uint64_t, DiscoveryPeer> m_discoveryPeers;
+    uint64_t m_discoveryCleanup = 0;
 
     SocketAddr m_broadcastAddress;
     SocketAddr m_peerAddress;

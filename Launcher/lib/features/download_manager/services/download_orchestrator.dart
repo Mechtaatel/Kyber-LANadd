@@ -40,7 +40,7 @@ class ProgressUpdate {
 @pragma('vm:entry-point')
 Future<Task?> _onTaskStart(Task task) async {
   final caFile = File(
-    join(FileHelper.getModuleDirectory().path, 'ca_root.pem'),
+    join(FileHelper.getGameModuleDirectory(lanOnly: true).path, 'ca_root.pem'),
   );
   final certificate = caFile.readAsBytesSync();
   SecurityContext.defaultContext.setTrustedCertificatesBytes(certificate);

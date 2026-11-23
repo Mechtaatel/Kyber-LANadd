@@ -151,6 +151,7 @@ message StartServerRequest {
   // Separate spectator slots; absent on older launchers (legacy default: 4).
   optional uint32 maxSpectators = 8;
   string hostName = 9;
+  optional uint32 port = 10;
 }
 
 message LoadLevelRequest {

@@ -1,7 +1,5 @@
-import 'dart:convert';
 import 'dart:io';
 
-import 'package:crypto/crypto.dart';
 import 'package:kyber_collection/src/utils/official_module_updater.dart';
 
 class FileHelper {
@@ -50,123 +48,18 @@ class FileHelper {
   static bool get hasPinnedLanModule =>
       File('${getModuleDirectory().path}/LAN-MODULE').existsSync();
 
-  static Directory getOnlineModuleRoot() => Directory(
-    '${getOfficialModuleDirectory().parent.path}/LAN-Modules/online',
-  );
-
-  static Directory getOnlineModuleDirectory() =>
-      OfficialModuleUpdater(root: getOnlineModuleRoot()).activeDirectory;
-
   static Directory getGameModuleDirectory({required bool lanOnly}) {
-    if (!lanOnly) return getOnlineModuleDirectory();
+    if (!lanOnly) return getOfficialModuleDirectory();
     final bundled = getLanModuleDirectory();
-    if (!File('${bundled.path}/LAN-MODULE').existsSync()) {
-      throw StateError(
-        'LAN module is missing. Restore the complete LAN ADD package: ${bundled.path}',
-      );
+    // Portable builds keep the LAN module next to the launcher.
+    if (!Platform.isWindows ||
+        File('${bundled.path}/LAN-MODULE').existsSync()) {
+      return bundled;
     }
-    return bundled;
+    return Directory('${getOfficialModuleDirectory().parent.path}/LAN-Modules');
   }
 
   static const modulePayloadFiles = OfficialModuleUpdater.requiredFiles;
-
-  static Future<void> validateBundledModule() async {
-    final bundled = getLanModuleDirectory();
-    for (final name in ['LAN-MODULE', 'VERSION', ...modulePayloadFiles]) {
-      final file = File('${bundled.path}/$name');
-      if (!await file.exists() || await file.length() == 0) {
-        throw StateError(
-          'LAN ADD module file is missing or empty: ${file.path}. '
-          'Reinstall the complete LAN ADD package.',
-        );
-      }
-    }
-  }
-
-  /// Use the Unicode-enabled DLL only for its verified upstream release.
-  /// Future official updates automatically use the newer official DLL.
-  static Future<Directory> prepareOnlineModule({
-    Directory? bundledDirectory,
-    Directory? officialDirectory,
-    Directory? cacheDirectory,
-  }) async {
-    final bundled = bundledDirectory ?? getLanModuleDirectory();
-    final official = officialDirectory ?? getOnlineModuleDirectory();
-    final compatibility = File('${bundled.path}/ONLINE-COMPATIBILITY.json');
-    if (!await compatibility.exists()) return official;
-    final Object? data;
-    try {
-      data = jsonDecode(await compatibility.readAsString());
-    } on FormatException {
-      return official;
-    } on FileSystemException {
-      return official;
-    }
-    if (data is! Map<String, dynamic>) return official;
-    final version = File('${official.path}/VERSION');
-    if (!await version.exists() ||
-        (await version.readAsString()).trim() != data['officialVersion']) {
-      return official;
-    }
-    final original = File('${official.path}/Kyber.dll');
-    final source = File('${bundled.path}/Kyber.dll');
-    if (!await source.exists() || !await original.exists()) return official;
-    final originalHash = (await sha256.bind(original.openRead()).first)
-        .toString();
-    final sourceHash = (await sha256.bind(source.openRead()).first).toString();
-    if (originalHash != data['officialDllSha256'] ||
-        sourceHash != data['bundledDllSha256'])
-      return official;
-
-    final root = cacheDirectory ?? getOnlineModuleRoot();
-    final target = Directory(
-      '${root.path}/localized-$originalHash-$sourceHash',
-    );
-    await target.create(recursive: true);
-    for (final name in [...modulePayloadFiles, 'VERSION']) {
-      final input = name == 'Kyber.dll'
-          ? source
-          : File('${official.path}/$name');
-      final output = File('${target.path}/$name');
-      await copyModuleFile(input, output);
-    }
-    final lanVersion = File('${bundled.path}/VERSION');
-    if (await lanVersion.exists()) {
-      await copyModuleFile(lanVersion, File('${target.path}/LAN-ADD-VERSION'));
-    }
-    for (final name in [
-      'msvcp140.dll',
-      'vcruntime140.dll',
-      'vcruntime140_1.dll',
-    ]) {
-      final runtime = File('${bundled.path}/$name');
-      if (await runtime.exists()) {
-        await copyModuleFile(runtime, File('${target.path}/$name'));
-      }
-    }
-    return target;
-  }
-
-  /// Verify once, stage the copy, then atomically replace the destination.
-  /// Shared by the online overlay and the ASCII-path compatibility directory.
-  static Future<void> copyModuleFile(File source, File target) async {
-    final expected = await sha256.bind(source.openRead()).first;
-    if (await target.exists() &&
-        await sha256.bind(target.openRead()).first == expected)
-      return;
-    final staging = await target.parent.createTemp('.lan-add-');
-    try {
-      final copy = await source.copy('${staging.path}/payload');
-      if (await sha256.bind(copy.openRead()).first != expected) {
-        throw StateError(
-          'LAN ADD module copy verification failed: ${target.path}',
-        );
-      }
-      await copy.rename(target.path);
-    } finally {
-      await staging.delete(recursive: true);
-    }
-  }
 
   static Directory getModsDirectory() {
     final baseDir = Directory(

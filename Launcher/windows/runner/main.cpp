@@ -15,7 +15,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     if (hwnd != NULL) {
       DispatchToProtocolHandler(hwnd);
 
-      //::ShowWindow(hwnd, SW_NORMAL);
+      ::ShowWindowAsync(hwnd, ::IsIconic(hwnd) ? SW_RESTORE : SW_SHOW);
       ::SetForegroundWindow(hwnd);
       return EXIT_FAILURE;
     }

@@ -44,7 +44,11 @@ class StartServerCommand extends Command<int> {
         'lan-discovery',
         defaultsTo: true,
         help:
-            'Advertise on LAN UDP port 25202 (KYBER_LAN_DISCOVERY=0 disables).',
+            'Respond to discovery on the game UDP port (KYBER_LAN_DISCOVERY=0 disables).',
+      )
+      ..addOption(
+        'server-port',
+        help: 'Game and discovery UDP port (KYBER_SERVER_PORT, default 25200).',
       )
       ..addOption('server-name', abbr: 'n', help: 'Specify the server name')
       ..addOption('server-password', abbr: 'p', help: 'Specify the server name')
@@ -129,6 +133,16 @@ class StartServerCommand extends Command<int> {
 
   @override
   Future<int> run() async {
+    final port = int.tryParse(
+      argResults?['server-port'] as String? ??
+          Platform.environment['KYBER_SERVER_PORT'] ??
+          '${LanDiscovery.port}',
+      radix: 10,
+    );
+    if (port == null || port < 1 || port > 65535) {
+      _logger.err('Server port must be between 1 and 65535.');
+      return ExitCode.usage.code;
+    }
     final lanOnly =
         LanMode.fromEnvironment(Platform.environment) ||
         argResults?['lan'] == true;
@@ -522,6 +536,7 @@ class StartServerCommand extends Command<int> {
         modData: modData,
         startupCommands: startupCommands,
         startServer: StartServerRequest(
+          port: port,
           lanOnly: lanOnly,
           password:
               (Platform.environment['KYBER_SERVER_PASSWORD'] ??

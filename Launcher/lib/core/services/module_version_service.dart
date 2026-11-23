@@ -25,7 +25,7 @@ extension VersionModuleExtension on VersionModule {
     switch (this) {
       case VersionModule.module:
         final x = File(
-          join(FileHelper.getOnlineModuleDirectory().path, 'VERSION'),
+          join(FileHelper.getOfficialModuleDirectory().path, 'VERSION'),
         );
 
         if (!x.existsSync()) {
@@ -50,7 +50,7 @@ extension VersionModuleExtension on VersionModule {
           'kyber_launcher_${DateTime.now().millisecondsSinceEpoch}',
         );
       case VersionModule.module:
-        return FileHelper.getOnlineModuleRoot().path;
+        return FileHelper.getOfficialModuleDirectory().path;
     }
   }
 
@@ -68,7 +68,7 @@ extension VersionModuleExtension on VersionModule {
       case VersionModule.installer:
         return [];
       case VersionModule.module:
-        final modulePath = FileHelper.getOnlineModuleDirectory().path;
+        final modulePath = FileHelper.getOfficialModuleDirectory().path;
         return [
           for (final name in FileHelper.modulePayloadFiles) '$modulePath/$name',
         ];
@@ -124,7 +124,7 @@ class ModuleVersionService {
     if (LanMode.enabled) return false;
     final latest = await _latestModule(channel: channel, service: service);
     return !await OfficialModuleUpdater.complete(
-      FileHelper.getOnlineModuleDirectory(),
+      FileHelper.getOfficialModuleDirectory(),
       latest.version.version,
     );
   }
@@ -152,7 +152,7 @@ class ModuleVersionService {
       options: CallOptions(timeout: const Duration(seconds: 20)),
     );
     _logger.info('Updating official Kyber module to ${latest.version.version}');
-    await OfficialModuleUpdater(root: FileHelper.getOnlineModuleRoot()).install(
+    await OfficialModuleUpdater(root: FileHelper.getOfficialModuleDirectory()).install(
       version: latest.version.version,
       downloadUrl: Uri.parse(download.url),
       expectedSize: latest.version.size,

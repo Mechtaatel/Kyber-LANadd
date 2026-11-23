@@ -13,6 +13,7 @@ import 'package:kyber_launcher/features/server_browser/models/server_list_state.
 import 'package:kyber_launcher/features/server_moderation/providers/moderation_servers_cubit.dart';
 import 'package:kyber_launcher/gen/rust/api/maxima.dart';
 import 'package:kyber_launcher/injection_container.dart';
+import 'package:kyber_launcher/main.dart' show box;
 
 const _pageLimit = 12;
 
@@ -110,7 +111,55 @@ class ServerListCubit extends Cubit<ServerListState> {
     goToPage(_page - 1);
   }
 
-  Future<void> loadServers() async {
+  Map<String, String> get _savedEndpoints => Map<String, String>.from(
+    box.get('directServers', defaultValue: const <String, String>{}) as Map,
+  );
+
+  Future<Server?> findEndpoint(ServerEndpoint endpoint) async =>
+      (await _discovery.discover(endpoint: endpoint)).firstOrNull;
+
+  Future<void> rememberEndpoint(ServerEndpoint endpoint, Server server) async {
+    final address = endpoint.toString();
+    await box.put('directServers', _savedEndpoints..[address] = server.name);
+    await loadServers(confirmed: {address: server});
+  }
+
+  Future<void> forgetEndpoint(String address) async {
+    await box.put('directServers', _savedEndpoints..remove(address));
+    await loadServers();
+  }
+
+  Future<List<Server>> _localServers(Map<String, Server> confirmed) async {
+    final discovered = await _discovery.discover(
+      hostPort: Preferences.hostServer.port,
+    );
+    final live = {for (final server in discovered) server.id: server};
+    final reachable = discovered.map((s) => '${s.ip}:${s.port}').toSet();
+    final pending = _savedEndpoints.entries.where(
+      (entry) => !reachable.contains(entry.key),
+    );
+    final saved = await Future.wait(
+      pending.map((entry) async {
+        final endpoint = ServerEndpoint.tryParse(entry.key);
+        if (endpoint == null) return null;
+        return confirmed[entry.key] ??
+            await findEndpoint(endpoint) ??
+            Server(
+              id: 'offline:${entry.key}',
+              name: entry.value,
+              ip: endpoint.address.address,
+              port: endpoint.port,
+              region: 'LAN',
+            );
+      }),
+    );
+    for (final server in saved.nonNulls) {
+      live[server.id] = server;
+    }
+    return live.values.toList();
+  }
+
+  Future<void> loadServers({Map<String, Server> confirmed = const {}}) async {
     if (isClosed) return;
     final generation = ++_loadGeneration;
     // Background refresh must not blank the visible list.
@@ -120,7 +169,7 @@ class ServerListCubit extends Cubit<ServerListState> {
 
     _needsUpdate = false;
 
-    final lanFuture = _discovery.discover();
+    final lanFuture = _localServers(confirmed);
     ServerList? servers;
     String? warning;
     try {
@@ -140,7 +189,8 @@ class ServerListCubit extends Cubit<ServerListState> {
     final s = _publicCache.resolve(servers?.servers, now: DateTime.now());
 
     for (final local in localServers) {
-      if (LanMode.enabled && !local.isLanOnly) continue;
+      if (LanMode.enabled && !local.isLanOnly && !local.isSavedOffline)
+        continue;
       final index = s.indexWhere(
         (server) => !server.isLan && server.id == local.browserServerId,
       );
@@ -354,7 +404,8 @@ class ServerListCubit extends Cubit<ServerListState> {
       newServers.removeWhere((element) {
         final info = element.serverInfo;
         return !info.name.toLowerCase().contains(query) &&
-            !info.creator.toLowerCase().contains(query);
+            !info.creator.toLowerCase().contains(query) &&
+            !(info.isLan && '${info.ip}:${info.port}'.contains(query));
       });
     }
 

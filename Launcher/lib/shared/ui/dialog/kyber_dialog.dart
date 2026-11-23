@@ -72,6 +72,7 @@ class KyberContentDialog extends StatefulWidget {
     this.actions,
     this.style,
     this.contentPadding,
+    this.compact = false,
     this.constraints = kDefaultContentDialogConstraints,
   });
 
@@ -85,6 +86,7 @@ class KyberContentDialog extends StatefulWidget {
   final List<Widget>? actions;
 
   final EdgeInsets? contentPadding;
+  final bool compact;
 
   /// The style used by this dialog. If non-null, it's merged with
   /// [FluentThemeData.dialogTheme]
@@ -155,7 +157,9 @@ class _KyberContentDialogState extends State<KyberContentDialog>
                       alignment: Alignment.center,
                     ),
                   ),
-                  Positioned.fill(
+                  SizedBox(
+                    width: double.infinity,
+                    height: widget.compact ? null : double.infinity,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -165,9 +169,12 @@ class _KyberContentDialogState extends State<KyberContentDialog>
                           child: Padding(
                             padding:
                                 widget.contentPadding ??
-                                const EdgeInsets.all(
+                                EdgeInsets.fromLTRB(
                                   20,
-                                ).copyWith(top: 50, bottom: 0),
+                                  widget.compact ? 24 : 50,
+                                  20,
+                                  0,
+                                ),
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -201,7 +208,10 @@ class _KyberContentDialogState extends State<KyberContentDialog>
                                     ),
                                   ),
                                 if (widget.content != null)
-                                  Expanded(
+                                  Flexible(
+                                    fit: widget.compact
+                                        ? FlexFit.loose
+                                        : FlexFit.tight,
                                     child: Padding(
                                       padding: style.bodyPadding ?? .zero,
                                       child: widget.content,
@@ -213,9 +223,12 @@ class _KyberContentDialogState extends State<KyberContentDialog>
                         ),
                         if (widget.actions != null)
                           Container(
-                            padding: const EdgeInsets.all(
+                            padding: EdgeInsets.fromLTRB(
                               20,
-                            ).copyWith(bottom: 60, top: 10),
+                              10,
+                              20,
+                              widget.compact ? 22 : 60,
+                            ),
                             child: ButtonTheme.merge(
                               data:
                                   style.actionThemeData ??

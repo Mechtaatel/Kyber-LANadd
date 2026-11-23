@@ -190,7 +190,14 @@ class LanAddUpdateService {
     RandomAccessFile? output;
     try {
       final request = await client
-          .getUrl(release.downloadUrl)
+          .getUrl(
+            release.downloadUrl.replace(
+              queryParameters: {
+                ...release.downloadUrl.queryParameters,
+                'download': '1',
+              },
+            ),
+          )
           .timeout(_requestTimeout);
       request.headers.set(HttpHeaders.userAgentHeader, 'Kyber-LAN-ADD-Updater');
       final response = await request.close().timeout(_requestTimeout);

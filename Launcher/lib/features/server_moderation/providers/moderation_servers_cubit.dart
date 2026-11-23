@@ -82,6 +82,7 @@ class ModerationServersCubit extends Cubit<ModerationServersState> {
       // Discovery gives us the actual name, port and mod list. The local RPC
       // still lets HOST show its own server while the responder is starting.
       final discovered = await LanDiscovery().discover(
+        hostPort: Preferences.hostServer.port,
         timeout: const Duration(milliseconds: 600),
       );
       for (final server in discovered) {
@@ -103,7 +104,7 @@ class ModerationServersCubit extends Cubit<ModerationServersState> {
         playerCount: info.server.playerList.length,
         maxPlayerCount: Preferences.hostServer.maxPlayers,
         ip: '127.0.0.1',
-        port: 25200,
+        port: Preferences.hostServer.port,
         region: 'LAN',
       );
       fallback.meta['lan_only'] = '1';

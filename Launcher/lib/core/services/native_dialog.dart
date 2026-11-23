@@ -19,3 +19,8 @@ void showRustLibMissingDialog() => _showErrorDialog(
   'Native Library Missing',
   'The required native library is missing. This can be caused by antivirus software removing the file. Please exclude the application from your antivirus and reinstall.',
 );
+
+void showStartupErrorDialog(Object error) => _showErrorDialog(
+  'KYBER Launcher',
+  'The launcher could not open its window.\n\n$error',
+);

@@ -30,12 +30,16 @@ class LanMode {
 
 extension LanServer on Server {
   bool get isLan => region == 'LAN';
+  bool get isSavedOffline => isLan && id.startsWith('offline:');
+  int? get discoveryPing => int.tryParse(meta['discovery_ping_ms'] ?? '');
   bool get isLanOnly => isLan && meta['lan_only'] == '1';
 
   /// Public identity retained separately from an address-based offline join ID.
   String get browserServerId => isLan ? meta['lan_server_id'] ?? id : id;
 
-  int browserPriority({required bool friend}) => official
+  int browserPriority({required bool friend}) => isSavedOffline
+      ? 4
+      : official
       ? 0
       : isLan
       ? 1
@@ -64,11 +68,40 @@ class PublicServerCache {
   }
 }
 
+/// A single user-entered unicast IPv4 endpoint. Never resolve a hostname or
+/// expand an address into a subnet when the user requests one server.
+class ServerEndpoint {
+  const ServerEndpoint._(this.address, this.port);
+  final InternetAddress address;
+  final int port;
+
+  static ServerEndpoint? tryParse(String input) {
+    final parts = input.trim().split(':');
+    if (parts.length != 2 ||
+        !RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(parts[0]) ||
+        !RegExp(r'^\d{1,5}$').hasMatch(parts[1]))
+      return null;
+    final octets = parts[0].split('.').map(int.parse).toList();
+    final port = int.parse(parts[1]);
+    if (octets.any((n) => n > 255) ||
+        octets.first == 0 ||
+        octets.first >= 224 ||
+        port < 1 ||
+        port > 65535)
+      return null;
+    return ServerEndpoint._(InternetAddress(octets.join('.')), port);
+  }
+
+  @override
+  String toString() => '${address.address}:$port';
+}
+
 /// IPv4 discovery on the local network. Never trusts an advertised IP address.
 class LanDiscovery {
   const LanDiscovery({this.discoveryPort = port});
 
-  static const port = 25202;
+  static const port = 25200;
+  static const legacyPort = 25202;
   static const magic = 'KYBER-LAN-1:';
   final int discoveryPort;
 
@@ -118,104 +151,165 @@ class LanDiscovery {
     merged.meta.remove('persisted_id');
     merged.meta['lan_only'] = local.isLanOnly ? '1' : '0';
     merged.meta['lan_server_id'] = online.id;
+    if (local.discoveryPing != null) {
+      merged.meta['discovery_ping_ms'] = local.discoveryPing.toString();
+    }
     return merged;
   }
 
+  static Server? _readReply(
+    Datagram packet,
+    int offset,
+    ServerEndpoint? endpoint,
+    List<InternetAddress> interfaces,
+    int ping,
+  ) {
+    final server = Server.fromBuffer(packet.data.sublist(offset));
+    if (server.name.isEmpty ||
+        server.id.isEmpty ||
+        server.port < 1 ||
+        server.port > 65535 ||
+        server.maxPlayerCount == 0)
+      return null;
+    final lanOnly = server.meta['lan_only'] == '1';
+    if (lanOnly && server.requiresPassword) return null;
+    if (endpoint != null) {
+      // A legacy discovery socket may report a different game port. When
+      // probing it as a fallback, match the user's requested game instance.
+      final sharedPort = server.meta['lan_shared_port'] == '1';
+      if (packet.port != endpoint.port &&
+          (sharedPort || server.port != endpoint.port)) {
+        return null;
+      }
+      if (sharedPort) server.port = packet.port;
+    }
+    server
+      ..ip = endpoint == null && interfaces.contains(packet.address)
+          ? '127.0.0.1'
+          : packet.address.address
+      ..region = 'LAN'
+      ..official = false
+      ..requiresProxy = false;
+    server.meta.clear();
+    server.meta['lan_only'] = lanOnly ? '1' : '0';
+    server.meta['lan_server_id'] = server.id;
+    server.meta['discovery_ping_ms'] = ping.toString();
+    if (lanOnly) server.id = 'lan:${server.ip}:${server.port}';
+    return server;
+  }
+
   Future<List<Server>> discover({
+    ServerEndpoint? endpoint,
+    int? hostPort,
     Duration timeout = const Duration(milliseconds: 1200),
   }) async {
     final servers = <String, Server>{};
     final sockets = <RawDatagramSocket>[];
     final random = Random.secure();
-    final query = [
-      ...ascii.encode(magic),
-      ...List.generate(16, (_) => random.nextInt(256)),
-    ];
+    final clock = Stopwatch()..start();
+    final probes = <(List<int>, int)>[];
+    final found = Completer<void>();
+    final targetPort = endpoint?.port ?? discoveryPort;
+    final ports = {
+      targetPort,
+      if (targetPort == port) legacyPort,
+      if (endpoint == null && hostPort != null) hostPort,
+    };
     try {
-      final interfaces = await NetworkInterface.list(
-        type: InternetAddressType.IPv4,
-      );
-      final interfaceAddresses = interfaces.expand((i) => i.addresses).toList();
-      final addresses = <InternetAddress>[
-        InternetAddress.loopbackIPv4,
-        ...interfaceAddresses.where(
-          (a) => isDiscoveryPeer(a, interfaceAddresses),
-        ),
-      ];
-      for (final address in addresses) {
+      final addresses = <InternetAddress>[InternetAddress.loopbackIPv4];
+      if (endpoint == null) {
+        final interfaces = await NetworkInterface.list(
+          type: InternetAddressType.IPv4,
+        );
+        final adapters = interfaces.expand((i) => i.addresses).toList();
+        addresses.addAll(adapters.where((a) => isDiscoveryPeer(a, adapters)));
+      }
+      for (final address
+          in endpoint == null ? addresses : [InternetAddress.anyIPv4]) {
         try {
           final socket = await RawDatagramSocket.bind(address, 0);
           sockets.add(socket);
-          socket.broadcastEnabled = true;
+          socket.broadcastEnabled = endpoint == null;
+          final challenges = <int>{};
           socket.listen((event) {
             if (event != RawSocketEvent.read) return;
             Datagram? packet;
             while ((packet = socket.receive()) != null) {
               final p = packet!;
-              if (p.port != discoveryPort ||
-                  !isDiscoveryPeer(p.address, addresses) ||
-                  p.data.length <= query.length ||
+              if (!ports.contains(p.port) ||
                   p.data.length > 60000 ||
-                  !Iterable<int>.generate(
-                    query.length,
-                  ).every((i) => p.data[i] == query[i]))
+                  (endpoint != null
+                      ? p.address != endpoint.address
+                      : !isDiscoveryPeer(p.address, addresses)))
                 continue;
-              try {
-                final server = Server.fromBuffer(p.data.sublist(query.length));
-                if (server.name.isEmpty ||
-                    server.id.isEmpty ||
-                    server.port < 1 ||
-                    server.port > 65535 ||
-                    server.maxPlayerCount == 0 ||
-                    servers.length >= 256)
+              for (final (query, sentAt) in probes) {
+                if (p.data.length <= query.length ||
+                    !Iterable<int>.generate(
+                      query.length,
+                    ).every((i) => p.data[i] == query[i]))
                   continue;
-                final offline = server.meta['lan_only'] == '1';
-                if (offline && server.requiresPassword) continue;
-                server
-                  ..ip = addresses.any((a) => a.address == p.address.address)
-                      ? '127.0.0.1'
-                      : p.address.address
-                  ..region = 'LAN'
-                  ..official = false
-                  ..requiresProxy = false;
-                server.meta.clear();
-                server.meta['lan_only'] = offline ? '1' : '0';
-                server.meta['lan_server_id'] = server.id;
-                final key = offline ? '${server.ip}:${server.port}' : server.id;
-                if (offline) server.id = 'lan:$key';
-                servers[key] = server;
-              } catch (_) {
-                // Ignore malformed/unknown packets from other LAN applications.
+                try {
+                  if (endpoint != null &&
+                      p.port == targetPort &&
+                      p.data.length == query.length + 8 &&
+                      challenges.add(sentAt)) {
+                    socket.send(p.data, p.address, p.port);
+                    break;
+                  }
+                  if (servers.length >= 256) break;
+                  final server = _readReply(
+                    p,
+                    query.length,
+                    endpoint,
+                    addresses,
+                    clock.elapsedMilliseconds - sentAt,
+                  );
+                  if (server == null) break;
+                  servers[server.id] = server;
+                  if (endpoint != null && !found.isCompleted) found.complete();
+                } on Object {
+                  // Ignore malformed datagrams and adapters disappearing mid-query.
+                }
+                break;
               }
             }
           }, onError: (Object _) {});
         } on SocketException {
-          // One unavailable adapter must not hide servers on the other adapters.
-        }
-      }
-      void probe() {
-        for (final socket in sockets) {
-          for (final target in probeTargets(socket.address)) {
-            try {
-              socket.send(query, target, discoveryPort);
-            } on SocketException {
-              /* Adapter disappeared during scan. */
-            }
-          }
+          // Other adapters may still reach the server.
         }
       }
 
-      probe();
-      await Future<void>.delayed(timeout ~/ 2);
-      probe();
-      await Future<void>.delayed(timeout ~/ 2);
-      return servers.values.toList();
+      for (var attempt = 0; attempt < 2 && !found.isCompleted; attempt++) {
+        final nonce = [
+          ...ascii.encode(magic),
+          ...List.generate(16, (_) => random.nextInt(256)),
+        ];
+        probes.add((nonce, clock.elapsedMilliseconds));
+        for (final socket in sockets) {
+          for (final target
+              in endpoint == null
+                  ? probeTargets(socket.address)
+                  : [endpoint.address]) {
+            for (final port in ports) {
+              if (endpoint != null && attempt == 0 && port != targetPort)
+                continue;
+              try {
+                socket.send(nonce, target, port);
+              } on SocketException {
+                // Adapter disappeared during scan.
+              }
+            }
+          }
+        }
+        await found.future.timeout(timeout ~/ 2, onTimeout: () {});
+      }
     } on SocketException {
-      return servers.values.toList();
+      // Return any servers already received.
     } finally {
       for (final socket in sockets) {
         socket.close();
       }
     }
+    return servers.values.toList();
   }
 }

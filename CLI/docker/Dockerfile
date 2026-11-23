@@ -42,7 +42,7 @@ COPY _work/vivoxsdk.dll /root/.local/share/kyber/module/vivoxsdk.dll
 COPY _work/ca_root.pem /root/.local/share/kyber/module/ca_root.pem
 COPY _work/Kyber.dll /root/.local/share/kyber/module/Kyber.dll
     
-EXPOSE 25200/udp 25202/udp
+EXPOSE 25200/udp
 
 ENV MAXIMA_DISABLE_WINE_VERIFICATION=1
 ENV MAXIMA_WINE_COMMAND="/home/kyber/wine/bin/wine64"
