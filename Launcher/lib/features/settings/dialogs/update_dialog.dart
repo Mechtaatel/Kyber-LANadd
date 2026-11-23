@@ -210,7 +210,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 ],
                 Text(
                   widget.module == VersionModule.installer
-                      ? 'Updates come from Mechtaatel/Kyber-LANadd on GitHub. Install updates the launcher and LAN module together, then restarts the launcher. Close Battlefront II first.'
+                      ? 'Updates come from Mechtaatel/Kyber-LANadd on GitHub. Close Battlefront II before installing the launcher update. With automatic updates enabled, the LAN module updates separately before LAN play.'
                       : 'Update the official Kyber game module. Your LAN module will not be changed.',
                   style: TextStyle(
                     fontSize: 15,

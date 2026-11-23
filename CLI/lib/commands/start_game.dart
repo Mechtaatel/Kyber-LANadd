@@ -14,7 +14,6 @@ import 'package:kyber_cli/utils/env_helper.dart';
 import 'package:kyber_cli/utils/extensions/server_mod_extension.dart';
 import 'package:kyber_cli/utils/kyber_grpc_server.dart';
 import 'package:kyber_cli/utils/mod_helper.dart';
-import 'package:kyber_cli/utils/proxy_helper.dart';
 import 'package:kyber_cli/utils/services/level_declaration_service.dart';
 import 'package:kyber_cli/utils/types/raw_mods.dart';
 import 'package:kyber_cli/utils/windows_env.dart';
@@ -137,20 +136,19 @@ class StartGameCommand extends Command<int> {
 
     JoinServerRequest? joinServerByIP;
     if (server != null) {
-      KyberProxy? proxy;
+      ProxyInfo? proxy;
       if (server.requiresProxy) {
-        final proxyId = argResults?['proxy-id'] as String?;
-        if (proxyId != null) {
-          final proxies = await ProxyHelper.getProxies();
-          final tmpProxy = proxies.where((x) => x.proxyInfo.id == proxyId).firstOrNull;
-          if (tmpProxy == null) {
-            _logger.err('Proxy with id $proxyId not found');
-            return ExitCode.usage.code;
-          }
-
-          proxy = tmpProxy;
+        final proxies = (await service.proxyClient.getList(Empty())).proxies;
+        final proxyId = server.meta['pinned_proxy_id'] ?? argResults?['proxy-id'] as String?;
+        if (proxyId != null && proxyId.isNotEmpty && proxyId != 'auto') {
+          proxy = proxies.where((p) => p.id == proxyId).firstOrNull;
         } else {
-          proxy = await ProxyHelper.getOptimalProxy();
+          final measured = await KyberProxy.measure(proxies);
+          proxy = KyberProxy.forServer(measured, server, 'auto')?.proxy ?? proxies.firstOrNull;
+        }
+        if (proxy == null) {
+          _logger.err('No matching Kyber proxy available');
+          return ExitCode.usage.code;
         }
       }
 
@@ -161,7 +159,7 @@ class StartGameCommand extends Command<int> {
 
       joinServerByIP = JoinServerRequest(
         id: server.id,
-        ip: server.requiresProxy ? proxy!.proxyInfo.ip : server.ip,
+        ip: server.requiresProxy ? proxy!.ip : server.ip,
         port: server.requiresProxy ? null : server.port,
         spectate: argResults?['spectate'] as bool? ?? false,
         type: server.requiresProxy ? JoinServerType.PROXIED : JoinServerType.DIRECT,

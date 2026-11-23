@@ -11,6 +11,7 @@ dev_dependencies:
   very_good_analysis: ^10.0.0
 
 dependencies:
+  pool: ^1.5.2
   dio: ^5.4.3+1
   grpc: ^5.0.0
   protobuf: ^6.0.0

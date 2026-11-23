@@ -43,7 +43,7 @@ class _AddServerDialogState extends State<AddServerDialog> {
         setState(() => error = 'No server replied at $endpoint.');
         return;
       }
-      if (LanMode.enabled && !server.isLanOnly) {
+      if (widget.servers.localOnly && !server.isLanOnly) {
         setState(() => error = 'This server requires a Kyber sign-in.');
         return;
       }

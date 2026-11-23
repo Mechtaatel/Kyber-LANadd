@@ -856,17 +856,22 @@ class _ServerPing extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var ping = server.discoveryPing;
+    var description = 'Discovery round trip';
     if (!server.isLan && server.requiresProxy) {
-      final proxies = context.watch<KyberProxyCubit>().state;
-      final id = server.meta['pinned_proxy_id'] ?? proxies.selectedProxy;
-      ping = proxies.proxies.firstWhereOrNull((p) => p.proxy.id == id)?.ping;
+      final state = context.watch<KyberProxyCubit>().state;
+      final route = KyberProxy.forServer(
+        state.proxies,
+        server,
+        state.selectedProxy,
+      );
+      final total = route?.estimatedRtt(server);
+      ping = total ?? route?.ping;
+      description = total == null
+          ? 'Latency to Kyber proxy'
+          : 'Estimated round trip via ${route!.proxy.name} (client and host measurements)';
     }
     return Tooltip(
-      message: ping == null
-          ? 'Latency unavailable'
-          : server.isLan
-          ? 'Discovery round trip'
-          : 'Latency to Kyber proxy',
+      message: ping == null ? 'Latency unavailable' : description,
       child: SizedBox(
         width: _serverMetricWidth,
         child: _Badge(

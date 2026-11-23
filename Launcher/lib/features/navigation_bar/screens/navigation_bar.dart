@@ -144,7 +144,7 @@ class _NavigationBarState extends State<NavigationBar>
     BuildContext context,
     LightswitchStatus apiState,
   ) {
-    if (apiState.status == .down) return;
+    if (apiState.status == .down || LanMode.enabled) return;
 
     final state = context.read<StatusCubit>().state;
     if (state.initialized) {

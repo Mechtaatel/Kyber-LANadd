@@ -230,7 +230,7 @@ class LanDiscovery {
           final socket = await RawDatagramSocket.bind(address, 0);
           sockets.add(socket);
           socket.broadcastEnabled = endpoint == null;
-          final challenges = <int>{};
+          final challengeSentAt = <int, int>{};
           socket.listen((event) {
             if (event != RawSocketEvent.read) return;
             Datagram? packet;
@@ -251,9 +251,11 @@ class LanDiscovery {
                 try {
                   if (endpoint != null &&
                       p.port == targetPort &&
-                      p.data.length == query.length + 8 &&
-                      challenges.add(sentAt)) {
-                    socket.send(p.data, p.address, p.port);
+                      p.data.length == query.length + 8) {
+                    if (!challengeSentAt.containsKey(sentAt)) {
+                      challengeSentAt[sentAt] = clock.elapsedMilliseconds;
+                      socket.send(p.data, p.address, p.port);
+                    }
                     break;
                   }
                   if (servers.length >= 256) break;
@@ -262,7 +264,10 @@ class LanDiscovery {
                     query.length,
                     endpoint,
                     addresses,
-                    clock.elapsedMilliseconds - sentAt,
+                    clock.elapsedMilliseconds -
+                        (p.port == targetPort
+                            ? challengeSentAt[sentAt] ?? sentAt
+                            : sentAt),
                   );
                   if (server == null) break;
                   servers[server.id] = server;

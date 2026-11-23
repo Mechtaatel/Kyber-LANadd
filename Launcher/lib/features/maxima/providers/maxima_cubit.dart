@@ -11,6 +11,7 @@ import 'package:kyber_launcher/core/config/colors.dart';
 import 'package:kyber_launcher/core/routing/app_router.dart';
 import 'package:kyber_launcher/core/services/app_settings.dart';
 import 'package:kyber_launcher/core/services/module_version_service.dart';
+import 'package:kyber_launcher/core/services/notification_service.dart';
 import 'package:kyber_launcher/core/services/windows_env.dart';
 import 'package:kyber_launcher/features/ea/services/search_service.dart';
 import 'package:kyber_launcher/features/kyber/helper/kyber_status_helper.dart';
@@ -161,22 +162,9 @@ class MaximaCubit extends Cubit<MaximaState> {
       );
     }
 
-    final loggedIn = await isLoggedIn();
-    if (loggedIn) {
+    if (!skipSetupCheck && await isLoggedIn()) {
       logger.info('Already logged in');
-      await requestLogin(skipMaximaCheck: true);
-
-      if (state.status == .error) {
-        return;
-      }
-
-      return emit(
-        state.copyWith(
-          loggedIn: true,
-          servicePlayer: state.servicePlayer,
-          status: .loaded,
-        ),
-      );
+      return requestLogin(skipMaximaCheck: true);
     }
 
     emit(state.copyWith(status: .loaded));
@@ -238,6 +226,28 @@ class MaximaCubit extends Cubit<MaximaState> {
     );
   }
 
+  Future<bool> signInForLan() async {
+    if (state.loggedIn) return true;
+    if (_loggingIn ||
+        state.status == MaximaStatus.starting ||
+        state.status == MaximaStatus.loading) {
+      NotificationService.info(message: 'EA sign-in is in progress.');
+      return false;
+    }
+    try {
+      await requestLogin(lanOnly: true);
+    } catch (error, stack) {
+      logger.warning('Could not sign in for LAN play', error, stack);
+    }
+    if (!state.loggedIn) {
+      NotificationService.error(
+        message:
+            state.error ?? 'EA sign-in is required to launch Battlefront II.',
+      );
+    }
+    return state.loggedIn;
+  }
+
   Future<void> requestLogin({
     bool skipMaximaCheck = false,
     bool? lanOnly,
@@ -272,6 +282,7 @@ class MaximaCubit extends Cubit<MaximaState> {
 
     if (state.status != .loaded && !skipMaximaCheck) {
       await init(skipSetupCheck: true);
+      if (state.status != MaximaStatus.loaded) return;
     }
 
     _loggingIn = true;
@@ -421,12 +432,16 @@ class MaximaCubit extends Cubit<MaximaState> {
             ),
           );
         } else {
-          logger.severe('Unknown error... Logging out');
           _loggingIn = false;
           return emit(
             MaximaState(
               status: MaximaStatus.error,
-              error: e.message,
+              error:
+                  e.message.contains(
+                    'error sending request for url (https://accounts.ea.com/connect/token)',
+                  )
+                  ? 'Could not reach EA sign-in. LAN server browsing is available.'
+                  : e.message,
               servicePlayer: servicePlayer,
             ),
           );

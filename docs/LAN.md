@@ -20,18 +20,25 @@ The Windows installer puts the fork module in `%ProgramData%/Kyber/LAN-Modules`.
 For online play, the launcher downloads updates for the selected official
 module channel into `%ProgramData%/Kyber/Module`. Downloads are staged and
 validated before replacing the installed files.
-Keep the entire LAN bundle with
-Kyber.dll, vivoxsdk.dll, ca_root.pem and VanillaBundleAggregation.kb. Updating the
-fork module requires installing a newer complete fork bundle. Do not place the
-marker next to an official DLL: a marker alone cannot add LAN support.
+The LAN bundle supplies Kyber.dll, vivoxsdk.dll, ca_root.pem and VanillaBundleAggregation.kb.
+To publish a DLL-only update, create a release in `Mechtaatel/Kyber-LANadd`
+with a new tag such as `lan-module-v1.0.0` and attach the compiled `Kyber.dll`
+under that exact filename. Leave **Set as the latest release** unchecked to keep
+the launcher installer on the repository's latest-release page. For a test build, use a tag such as
+`lan-module-v1.1.0-beta.1` and mark the release as a prerelease. Keep the
+launcher version unchanged. The Windows launcher checks the selected channel
+before starting a LAN game when automatic updates are enabled. It verifies
+the DLL against the asset size and SHA-256 supplied by GitHub. If GitHub is
+unreachable, the installed module remains available for play.
+For Linux hosting, replace the server bundle's DLL and restart the game server.
 
 LAN ADD launcher updates are checked on startup against published Releases of
 `Mechtaatel/Kyber-LANadd` on GitHub, including when using LAN mode. The default
 **beta** channel includes prereleases; **stable** includes only stable releases.
 Use **Settings → Accounts and Updates → LAN ADD updates** to check manually.
 Choose **Install** to download and verify the release's Windows installer, update
-the current installation directory and restart. The installer updates both the
-launcher and bundled LAN module. Close Battlefront II before installing.
+the current installation directory and restart. A fresh install includes the base LAN module. Reinstalling the
+launcher preserves independently updated LAN modules. Close Battlefront II before installing.
 Network failures do not prevent launcher startup or LAN use.
 
 For a new Windows release, update `Launcher/assets/lan_add_version.txt` before

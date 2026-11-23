@@ -9,17 +9,21 @@ import 'package:pub_semver/pub_semver.dart';
 const lanAddRepository = 'Mechtaatel/Kyber-LANadd';
 const lanAddReleasesUrl = 'https://github.com/$lanAddRepository/releases';
 
+enum LanAddComponent { launcher, module }
+
+const lanModuleTagPrefix = 'lan-module-v';
+
 class LanAddRelease {
   const LanAddRelease({
     required this.version,
-    required this.installerName,
+    required this.assetName,
     required this.downloadUrl,
     required this.size,
     required this.sha256Digest,
   });
 
   final Version version;
-  final String installerName;
+  final String assetName;
   final Uri downloadUrl;
   final int size;
   final String sha256Digest;
@@ -27,6 +31,7 @@ class LanAddRelease {
   static LanAddRelease? select(
     List<dynamic> releases, {
     required String channel,
+    LanAddComponent component = LanAddComponent.launcher,
   }) {
     if (channel != 'stable' && channel != 'beta') {
       throw ArgumentError.value(channel, 'channel', 'Use stable or beta');
@@ -44,7 +49,12 @@ class LanAddRelease {
       if (tag is! String) continue;
       final Version version;
       try {
-        version = Version.parse(tag.replaceFirst(RegExp('^v'), ''));
+        if (component == LanAddComponent.module) {
+          if (!tag.startsWith(lanModuleTagPrefix)) continue;
+          version = Version.parse(tag.substring(lanModuleTagPrefix.length));
+        } else {
+          version = Version.parse(tag.replaceFirst(RegExp('^v'), ''));
+        }
       } on FormatException {
         continue;
       }
@@ -54,19 +64,20 @@ class LanAddRelease {
       }
       final assets = entry['assets'];
       if (assets is! List) continue;
-      final installers = assets.whereType<Map<String, dynamic>>().where((
+      final matchingAssets = assets.whereType<Map<String, dynamic>>().where((
         asset,
       ) {
         final filename = asset['name'];
         return filename is String &&
-            RegExp(
-              r'^Kyber-LAN-ADD-[A-Za-z0-9._-]+-Setup\.exe$',
-            ).hasMatch(filename) &&
+            (component == LanAddComponent.module
+                ? filename == 'Kyber.dll'
+                : RegExp(
+                    r'^Kyber-LAN-ADD-[A-Za-z0-9._-]+-Setup\.exe$',
+                  ).hasMatch(filename)) &&
             asset['state'] == 'uploaded';
       }).toList();
-      // A release must identify one Windows installer unambiguously.
-      if (installers.length != 1) continue;
-      final asset = installers.single;
+      if (matchingAssets.length != 1) continue;
+      final asset = matchingAssets.single;
       final digest = asset['digest'];
       final size = asset['size'];
       final url = asset['browser_download_url'];
@@ -82,12 +93,13 @@ class LanAddRelease {
           uri.scheme != 'https' ||
           uri.host != 'github.com' ||
           uri.userInfo.isNotEmpty ||
-          !uri.path.startsWith('/$lanAddRepository/releases/download/$tag/')) {
+          uri.path !=
+              '/$lanAddRepository/releases/download/$tag/${asset['name']}') {
         continue;
       }
       final release = LanAddRelease(
         version: version,
-        installerName: asset['name'] as String,
+        assetName: asset['name'] as String,
         downloadUrl: uri,
         size: size,
         sha256Digest: digest.substring('sha256:'.length).toLowerCase(),
@@ -102,77 +114,94 @@ class LanAddRelease {
 
 class LanAddUpdateService {
   static const _requestTimeout = Duration(seconds: 20);
-  static final _cache = <String, (DateTime, LanAddRelease?)>{};
-  static final _retryAfter = <String, DateTime>{};
+  static List<dynamic> _releases = [];
+  static DateTime? _cachedAt;
+  static DateTime? _retryAfter;
+  static Future<List<dynamic>>? _pending;
 
   Future<LanAddRelease?> latest({
     String channel = 'beta',
     bool refresh = false,
+    LanAddComponent component = LanAddComponent.launcher,
   }) async {
-    final cached = _cache[channel];
-    final retryAfter = _retryAfter[channel];
-    if (retryAfter != null && DateTime.now().isBefore(retryAfter)) {
-      return cached?.$2;
-    }
-    if (!refresh &&
-        cached != null &&
-        DateTime.now().difference(cached.$1) < const Duration(minutes: 5)) {
-      return cached.$2;
-    }
+    final now = DateTime.now();
+    final fresh =
+        _cachedAt != null &&
+        now.difference(_cachedAt!) < const Duration(minutes: 5);
+    final backedOff = _retryAfter != null && now.isBefore(_retryAfter!);
+    final releases = backedOff || (!refresh && fresh)
+        ? _releases
+        : await (_pending ??= _fetchReleases().whenComplete(() {
+            _pending = null;
+          }));
+    return LanAddRelease.select(
+      releases,
+      channel: channel,
+      component: component,
+    );
+  }
+
+  Future<List<dynamic>> _fetchReleases() async {
     final client = HttpClient()..connectionTimeout = _requestTimeout;
     try {
-      final request = await client
-          .getUrl(
-            Uri.parse(
-              'https://api.github.com/repos/$lanAddRepository/releases?per_page=100',
-            ),
-          )
-          .timeout(_requestTimeout);
-      request.headers
-        ..set(HttpHeaders.userAgentHeader, 'Kyber-LAN-ADD-Updater')
-        ..set(HttpHeaders.acceptHeader, 'application/vnd.github+json')
-        ..set('X-GitHub-Api-Version', '2022-11-28');
-      final response = await request.close().timeout(_requestTimeout);
-      if (response.statusCode != HttpStatus.ok) {
-        if (response.statusCode == HttpStatus.forbidden ||
-            response.statusCode == HttpStatus.tooManyRequests) {
-          final reset = int.tryParse(
-            response.headers.value('x-ratelimit-reset') ?? '',
-          );
-          final now = DateTime.now();
-          final wait = reset == null
-              ? const Duration(minutes: 10)
-              : DateTime.fromMillisecondsSinceEpoch(
-                      reset * 1000,
-                    ).difference(now) +
-                    const Duration(seconds: 15);
-          _retryAfter[channel] = now.add(
-            wait < const Duration(minutes: 1)
-                ? const Duration(minutes: 1)
-                : wait > const Duration(hours: 1)
-                ? const Duration(hours: 1)
-                : wait,
+      final releases = <dynamic>[];
+      for (var page = 1; ; page++) {
+        final request = await client
+            .getUrl(
+              Uri.https('api.github.com', '/repos/$lanAddRepository/releases', {
+                'per_page': '100',
+                'page': page.toString(),
+              }),
+            )
+            .timeout(_requestTimeout);
+        request.headers
+          ..set(HttpHeaders.userAgentHeader, 'Kyber-LAN-ADD-Updater')
+          ..set(HttpHeaders.acceptHeader, 'application/vnd.github+json')
+          ..set('X-GitHub-Api-Version', '2022-11-28');
+        final response = await request.close().timeout(_requestTimeout);
+        if (response.statusCode != HttpStatus.ok) {
+          if (response.statusCode == HttpStatus.forbidden ||
+              response.statusCode == HttpStatus.tooManyRequests) {
+            final reset = int.tryParse(
+              response.headers.value('x-ratelimit-reset') ?? '',
+            );
+            final now = DateTime.now();
+            final wait = reset == null
+                ? const Duration(minutes: 10)
+                : DateTime.fromMillisecondsSinceEpoch(
+                        reset * 1000,
+                      ).difference(now) +
+                      const Duration(seconds: 15);
+            _retryAfter = now.add(
+              wait < const Duration(minutes: 1)
+                  ? const Duration(minutes: 1)
+                  : wait > const Duration(hours: 1)
+                  ? const Duration(hours: 1)
+                  : wait,
+            );
+          }
+          throw HttpException(
+            'GitHub release check failed (${response.statusCode})',
           );
         }
-        throw HttpException(
-          'GitHub release check failed (${response.statusCode})',
-        );
+        final body = await response
+            .timeout(_requestTimeout)
+            .transform(utf8.decoder)
+            .join();
+        final decoded = jsonDecode(body);
+        if (decoded is! List)
+          throw const FormatException('Invalid release list');
+        releases.addAll(decoded);
+        if (decoded.length < 100) break;
       }
-      final body = await response
-          .timeout(_requestTimeout)
-          .transform(utf8.decoder)
-          .join();
-      final decoded = jsonDecode(body);
-      if (decoded is! List) throw const FormatException('Invalid release list');
-      final release = LanAddRelease.select(decoded, channel: channel);
-      _cache[channel] = (DateTime.now(), release);
-      _retryAfter.remove(channel);
-      return release;
+      _releases = releases;
+      _cachedAt = DateTime.now();
+      _retryAfter = null;
+      return releases;
     } on Object {
-      _retryAfter.putIfAbsent(
-        channel,
-        () => DateTime.now().add(const Duration(minutes: 2)),
-      );
+      if (_retryAfter == null || !_retryAfter!.isAfter(DateTime.now())) {
+        _retryAfter = DateTime.now().add(const Duration(minutes: 2));
+      }
       rethrow;
     } finally {
       client.close(force: true);
@@ -185,7 +214,7 @@ class LanAddUpdateService {
     void Function(int, int)? onProgress,
   }) async {
     await destination.create(recursive: true);
-    final file = File(p.join(destination.path, release.installerName));
+    final file = File(p.join(destination.path, release.assetName));
     final client = HttpClient()..connectionTimeout = _requestTimeout;
     RandomAccessFile? output;
     try {
@@ -203,7 +232,7 @@ class LanAddUpdateService {
       final response = await request.close().timeout(_requestTimeout);
       if (response.statusCode != HttpStatus.ok) {
         throw HttpException(
-          'Installer download failed (${response.statusCode})',
+          'Asset download failed (${response.statusCode})',
         );
       }
       var received = 0;
@@ -211,7 +240,7 @@ class LanAddUpdateService {
       await for (final bytes in response.timeout(const Duration(seconds: 60))) {
         received += bytes.length;
         if (received > release.size) {
-          throw const FormatException('Installer exceeds the published size');
+          throw const FormatException('Asset exceeds the published size');
         }
         await output.writeFrom(bytes);
         onProgress?.call(received, release.size);
@@ -220,11 +249,11 @@ class LanAddUpdateService {
       await output.close();
       output = null;
       if (received != release.size) {
-        throw const FormatException('Installer download is incomplete');
+        throw const FormatException('Asset download is incomplete');
       }
       final digest = await sha256.bind(file.openRead()).first;
       if (digest.toString() != release.sha256Digest) {
-        throw const FormatException('Installer SHA-256 verification failed');
+        throw const FormatException('Asset SHA-256 verification failed');
       }
       return file;
     } catch (_) {

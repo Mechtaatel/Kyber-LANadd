@@ -13,6 +13,7 @@ import 'package:kyber_launcher/core/services/module_version_service.dart';
 import 'package:kyber_launcher/core/services/notification_service.dart';
 import 'package:kyber_launcher/features/download_manager/providers/download_manager_cubit.dart';
 import 'package:kyber_launcher/features/maxima/providers/maxima_cubit.dart';
+import 'package:kyber_launcher/features/kyber/providers/kyber_api_status_cubit.dart';
 import 'package:kyber_launcher/features/mods/services/mod_service.dart';
 import 'package:kyber_launcher/features/navigation_bar/providers/status_cubit.dart';
 import 'package:kyber_launcher/features/navigation_bar/widgets/action_bar.dart';
@@ -147,11 +148,18 @@ class _WalkThroughSetupState extends State<WalkThroughSetup> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
                             children: [
-                              const SizedBox(
-                                height: 40,
-                                width: 140,
-                                child: SizedBox.shrink(),
-                              ),
+                              if (setupPage == 0)
+                                KyberButton(
+                                  text: 'BROWSE LAN SERVERS',
+                                  onPressed: () {
+                                    context
+                                        .read<LightswitchCubit>()
+                                        .enableLanMode();
+                                    _finishSetup();
+                                  },
+                                )
+                              else
+                                const SizedBox(width: 140),
                               const SizedBox(width: 60),
                               Row(
                                 children: [

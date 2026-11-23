@@ -73,6 +73,11 @@ class ServerBrowserCubit extends Cubit<ServerBrowserState> {
 
     _joining = true;
     try {
+      final maxima = navigatorKey.currentContext!.read<MaximaCubit>();
+      if (!maxima.state.loggedIn &&
+          (!serverInfo.isLanOnly || !await maxima.signInForLan())) {
+        return;
+      }
       await _doJoinServer(
         serverInfo,
         enabledDownload: enabledDownload,
@@ -205,6 +210,8 @@ class ServerBrowserCubit extends Cubit<ServerBrowserState> {
 
       await KyberServerHelper.joinServer(
         serverInfo,
+        // The browser has already resolved both routes, including an explicit region choice.
+        resolveLanRoute: false,
         selectedCollection: cosmeticCollection,
         spectator: spectator,
         password: serverPassword,

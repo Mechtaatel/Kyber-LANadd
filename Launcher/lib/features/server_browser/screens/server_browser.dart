@@ -86,7 +86,8 @@ class _ServerBrowserState extends State<ServerBrowser> {
           flex: 3,
           child: Column(
             children: [
-              const _StatusWidget(),
+              if (!context.read<ServerListCubit>().localOnly)
+                const _StatusWidget(),
               BlocBuilder<ServerBrowserCubit, ServerBrowserState>(
                 builder: (context, state) {
                   if (state.selectedServer != null) {
@@ -97,7 +98,9 @@ class _ServerBrowserState extends State<ServerBrowser> {
                     );
                   }
 
-                  return const HomeEventList();
+                  return context.read<ServerListCubit>().localOnly
+                      ? const SizedBox.shrink()
+                      : const HomeEventList();
                 },
               ),
             ],

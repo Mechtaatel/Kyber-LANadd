@@ -200,87 +200,83 @@ bool UDPSocket::HandleDiscovery(const uint8_t* data, int size, const sockaddr_in
     return true;
 }
 
+int UDPSocket::ReceiveDatagram(uint8_t* buffer, int bufferSize, sockaddr_in& peer)
+{
+    if (m_socketHandle == INVALID_SOCKET) return -1;
+
+    for (int consumed = 0; consumed < 8; ++consumed)
+    {
+        int addressSize = sizeof(peer);
+        const int size = recvfrom(m_socketHandle, reinterpret_cast<char*>(buffer), bufferSize, 0,
+            reinterpret_cast<sockaddr*>(&peer), &addressSize);
+        if (size == SOCKET_ERROR)
+        {
+            const int error = WSAGetLastError();
+            if (error != WSAEWOULDBLOCK) KYBER_LOG(Debug, "Error receiving data: " << error);
+            return -1;
+        }
+
+        if (m_direction != ProtocolDirection::Clientbound) return size;
+        if (HandleDiscovery(buffer, size, peer))
+        {
+            if (m_blockingMode) return -1;
+            continue;
+        }
+        if (!g_program->m_server->m_onlineMode && !IndependentLanEnabled() && !IsLanPeer(peer.sin_addr.s_addr))
+            return -1;
+        return size;
+    }
+    return -1;
+}
+
 int UDPSocket::ReceiveFromWhen(uint8_t* buffer, int bufferSize, unsigned int& when)
 {
-    int addressSize = sizeof(sockaddr_in);
-    sockaddr_in addr = *(sockaddr_in*)m_peerAddress.Data();
-
-    // KYBER_LOG(Info, "[" << DirectionToString(m_direction) << "] Receiving data");
-
-    int proxyId = -1;
-    int recvSize = 0;
-
-    std::optional<WebSocketMessage*> data = m_proxyQueue->tryDequeue();
-    if (data)
+    // A hybrid host can have a backlog on either transport. After a relayed
+    // packet, give the nonblocking UDP socket the next turn.
+    const bool directFirst = m_preferDirectReceive && !m_blockingMode;
+    const bool canReceiveProxy = m_direction == ProtocolDirection::Clientbound || m_info.isProxied;
+    auto message = canReceiveProxy && !directFirst ? m_proxyQueue->tryDequeue() : std::nullopt;
+    sockaddr_in peer{};
+    if (!message)
     {
-        WebSocketMessage* msgData = *data;
-        recvSize = std::min(bufferSize, static_cast<int>(msgData->size));
-        when = msgData->timestamp;
-        proxyId = msgData->socketId;
-        memcpy(buffer, msgData->data, recvSize);
-
-        FB_GLOBAL_ARENA->del(msgData);
-    }
-    else if (m_socketHandle != INVALID_SOCKET) // Local
-    {
-        when = NetTick();
-        for (int consumed = 0;;)
+        const int size = ReceiveDatagram(buffer, bufferSize, peer);
+        if (size >= 0)
         {
-            recvSize = recvfrom(m_socketHandle, (char*)buffer, bufferSize, 0, (sockaddr*)&addr, &addressSize);
-            if (recvSize < 0)
-            {
-                const int error = WSAGetLastError();
-                if (error != WSAEWOULDBLOCK) KYBER_LOG(Debug, "Error receiving data: " << error);
-                return recvSize;
-            }
-
-            if (m_direction != ProtocolDirection::Clientbound) break;
-            if (HandleDiscovery(buffer, recvSize, addr))
-            {
-                if (m_blockingMode || ++consumed == 8) return -1;
-                continue;
-            }
-            if (!g_program->m_server->m_onlineMode && !IsLanPeer(addr.sin_addr.s_addr) && !IndependentLanEnabled())
-                return -1;
-            break;
+            when = NetTick();
+            m_peerAddress.SetData(&peer, sizeof(peer));
+            m_peerAddressIsValid = true;
+            m_preferDirectReceive = false;
+            return size;
         }
-    }
-    else
-    {
-        KYBER_LOG(Error, "Invalid socket handle");
-        return -1;
+        if (!directFirst) return -1;
+        message = m_proxyQueue->tryDequeue();
+        if (!message) return -1;
     }
 
-    if (proxyId != -1 && m_direction == ProtocolDirection::Clientbound)
+    auto* packet = *message;
+    int size = std::min(bufferSize, static_cast<int>(packet->size));
+    const auto proxyId = packet->socketId;
+    when = packet->timestamp;
+    memcpy(buffer, packet->data, size);
+    FB_GLOBAL_ARENA->del(packet);
+
+    if (m_direction == ProtocolDirection::Clientbound)
     {
-        if (recvSize < 2 || proxyId < 0 || proxyId > 255)
+        m_preferDirectReceive = true;
+        if (size < 2 || proxyId > 255)
         {
             KYBER_LOG(Warning, "Discarding malformed proxy datagram");
             return -1;
         }
-        addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = inet_addr(("0.1.1." + std::to_string(proxyId)).c_str());
-        addr.sin_port = buffer[0] << 8 | buffer[1];
-
-        std::memmove(buffer, buffer + 2, recvSize - 2);
-        recvSize -= 2;
-    }
-
-    if (proxyId == -1 || m_direction != ProtocolDirection::Serverbound)
-    {
-        m_peerAddress.SetData(&addr, sizeof(sockaddr_in));
+        peer.sin_family = AF_INET;
+        peer.sin_addr.s_addr = htonl(0x00010100u | proxyId);
+        peer.sin_port = buffer[0] << 8 | buffer[1];
+        m_peerAddress.SetData(&peer, sizeof(peer));
         m_peerAddressIsValid = true;
+        size -= 2;
+        std::memmove(buffer, buffer + 2, size);
     }
-
-    // KYBER_LOG(Info, "[" << DirectionToString(m_direction) << "] Received " << recvSize << " bytes from " << inet_ntoa(addr.sin_addr) <<
-    // ":"
-    //                     << ntohs(addr.sin_port));
-
-#ifdef _DEBUG
-    KYBER_LOG(Trace, "[" << DirectionToString(m_direction) << "] Received " << recvSize << " bytes");
-#endif
-
-    return recvSize;
+    return size;
 }
 
 bool UDPSocket::Listen(const SocketAddr& address, bool blocking)

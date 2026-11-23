@@ -345,6 +345,9 @@ class StartServerCommand extends Command<int> {
 
     sl.get<KyberGRPCService>().token = kToken;
 
+    final hostPings = <KyberProxy>[];
+    final measuring = lanOnly ? null : _measureHostProxies(hostPings);
+
     final userId = _stableStringHash(credentials?.$1 ?? '');
     final licenseId = '${userId}_file';
     final denuvoId = '${userId}_denuvo';
@@ -567,7 +570,23 @@ class StartServerCommand extends Command<int> {
     );
 
     late int pid;
+    final inheritedMeta = Platform.environment['KYBER_SERVER_META'];
+    var publishedPings = false;
     try {
+      if (measuring != null) {
+        // Measurements run alongside setup. A slow relay must not hold up hosting.
+        await measuring.timeout(const Duration(seconds: 1), onTimeout: () {});
+        if (hostPings.isNotEmpty) {
+          Env.set(
+            'KYBER_SERVER_META',
+            KyberProxy.hostMetadata(
+              inheritedMeta ?? '',
+              hostPings,
+            ),
+          );
+          publishedPings = true;
+        }
+      }
       pid = await startGame(
         gameSlug: 'star-wars-battlefront-2',
         gamePathOverride: argResults?['game-path'] as String?,
@@ -583,6 +602,14 @@ class StartServerCommand extends Command<int> {
         'Battlefront II. LAN mode still requires EA licensing.',
       );
       return ExitCode.usage.code;
+    } finally {
+      if (publishedPings) {
+        if (inheritedMeta == null) {
+          Env.delete('KYBER_SERVER_META');
+        } else {
+          Env.set('KYBER_SERVER_META', inheritedMeta);
+        }
+      }
     }
 
     final moduleDir = modulePath ?? FileHelper.getModuleDirectory().path;
@@ -744,6 +771,18 @@ class StartServerCommand extends Command<int> {
       }
     } catch (e) {
       _logger.err('Error uploading license: $e');
+    }
+  }
+
+  Future<void> _measureHostProxies(List<KyberProxy> results) async {
+    try {
+      final list = await sl.get<KyberGRPCService>().proxyClient.getList(
+        Empty(),
+        options: CallOptions(timeout: const Duration(seconds: 3)),
+      );
+      await KyberProxy.measure(list.proxies, onMeasured: results.add);
+    } on Exception catch (error) {
+      _logger.detail('Host proxy latency unavailable: $error');
     }
   }
 

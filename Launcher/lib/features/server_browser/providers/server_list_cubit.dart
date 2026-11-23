@@ -27,17 +27,22 @@ class ServerListCubit extends Cubit<ServerListState> {
   List<Server>? _servers;
   String? _warning;
 
-  ServerListCubit({LanDiscovery discovery = const LanDiscovery()})
-    : _discovery = discovery,
-      super(const ServerListInitial()) {
+  final bool browseLan;
+  bool get localOnly => browseLan || LanMode.enabled;
+
+  ServerListCubit({
+    this.browseLan = false,
+    LanDiscovery discovery = const LanDiscovery(),
+  }) : _discovery = discovery,
+       super(const ServerListInitial()) {
     filter = ServerFilter();
 
     unawaited(loadServers());
-    if (!LanMode.enabled) unawaited(_loadFriends());
+    if (!localOnly) unawaited(_loadFriends());
 
     _updateTimer = Timer.periodic(const Duration(seconds: 40), (timer) {
       final route = router.routeInformationProvider.value.uri.toString();
-      if (!route.startsWith('/home')) {
+      if (!browseLan && !route.startsWith('/home')) {
         _needsUpdate = true;
         return;
       }
@@ -173,7 +178,7 @@ class ServerListCubit extends Cubit<ServerListState> {
     ServerList? servers;
     String? warning;
     try {
-      servers = LanMode.enabled
+      servers = localOnly
           ? ServerList()
           : await sl
                 .get<KyberGRPCService>()
@@ -189,8 +194,7 @@ class ServerListCubit extends Cubit<ServerListState> {
     final s = _publicCache.resolve(servers?.servers, now: DateTime.now());
 
     for (final local in localServers) {
-      if (LanMode.enabled && !local.isLanOnly && !local.isSavedOffline)
-        continue;
+      if (localOnly && !local.isLanOnly && !local.isSavedOffline) continue;
       final index = s.indexWhere(
         (server) => !server.isLan && server.id == local.browserServerId,
       );
@@ -213,7 +217,7 @@ class ServerListCubit extends Cubit<ServerListState> {
   void _publishServers() {
     if (isClosed || _servers == null) return;
     final s = List<Server>.of(_servers!);
-    if (Preferences.admin.dummyServer) {
+    if (!localOnly && Preferences.admin.dummyServer) {
       s.add(KyberDummyServer(title: 'Dummy Server'));
       s.add(
         KyberDummyServer(

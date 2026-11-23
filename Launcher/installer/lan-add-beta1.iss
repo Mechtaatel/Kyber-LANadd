@@ -68,7 +68,9 @@ Type: dirifempty; Name: "{app}\lan-module"
 [Files]
 Source: "{#BundleSourceDir}\*"; Excludes: "lan-module\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
-Source: "{#BundleSourceDir}\lan-module\*"; DestDir: "{commonappdata}\Kyber\LAN-Modules"; Flags: ignoreversion
+Source: "{#BundleSourceDir}\lan-module\*"; Excludes: "Kyber.dll,VERSION"; DestDir: "{commonappdata}\Kyber\LAN-Modules"; Flags: ignoreversion
+Source: "{#BundleSourceDir}\lan-module\Kyber.dll"; DestDir: "{commonappdata}\Kyber\LAN-Modules"; Flags: ignoreversion; Check: InstallBundledLanModule
+Source: "{#BundleSourceDir}\lan-module\VERSION"; DestDir: "{commonappdata}\Kyber\LAN-Modules"; Flags: ignoreversion; Check: InstallBundledLanModule
 Source: "cleanup-module-cache.ps1"; DestDir: "{app}"; Flags: deleteafterinstall
 
 [Icons]
@@ -87,11 +89,25 @@ Filename: "{app}\{#AppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowa
 Filename: "{app}\{#AppExeName}"; Flags: nowait runasoriginaluser; Check: IsLanAddUpdate
 
 [Code]
+var
+  KeepUpdatedLanModule: Boolean;
+
+function InstallBundledLanModule: Boolean;
+begin
+  Result := not KeepUpdatedLanModule;
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Command: String;
   ExitCode: Integer;
+  InstalledVersion: AnsiString;
+  LanDir: String;
 begin
+  LanDir := ExpandConstant('{commonappdata}\Kyber\LAN-Modules\');
+  KeepUpdatedLanModule := FileExists(LanDir + 'Kyber.dll') and
+    LoadStringFromFile(LanDir + 'VERSION', InstalledVersion) and
+    (Pos('lan-module-v', String(InstalledVersion)) = 1);
   Result := '';
   { Maxima runs as a service and can keep its executable and runtime DLL locked. }
   Command := '$ErrorActionPreference = ''Stop''; try { ' +

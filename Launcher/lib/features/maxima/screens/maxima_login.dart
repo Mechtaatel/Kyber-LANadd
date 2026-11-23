@@ -5,6 +5,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge.dart';
 import 'package:grpc/grpc.dart';
+import 'package:kyber/kyber.dart' show LanMode;
+import 'package:kyber_launcher/features/kyber/providers/kyber_api_status_cubit.dart';
+import 'package:kyber_launcher/features/server_browser/providers/server_list_cubit.dart';
+import 'package:kyber_launcher/features/server_browser/screens/server_browser.dart';
 import 'package:kyber_launcher/core/config/colors.dart';
 import 'package:kyber_launcher/core/services/app_settings.dart';
 import 'package:kyber_launcher/core/services/notification_service.dart';
@@ -33,9 +37,46 @@ class _MaximaLoginState extends State<MaximaLogin> {
 
   bool _whitelistPrompt = false;
   bool _loading = false;
+  bool _browsingLan = LanMode.enabled;
 
   @override
   Widget build(BuildContext context) {
+    if (_browsingLan) {
+      final status = context.select((MaximaCubit cubit) => cubit.state.status);
+      return Padding(
+        padding: kDefaultPadding,
+        child: Column(
+          spacing: 12,
+          children: [
+            Row(
+              spacing: 12,
+              children: [
+                KyberButton(
+                  text: 'BACK',
+                  onPressed: () => setState(() => _browsingLan = false),
+                ),
+                const Text('LAN SERVERS'),
+                const Spacer(),
+                KyberButton(
+                  text: 'SIGN IN WITH EA TO PLAY',
+                  onPressed:
+                      status == MaximaStatus.loading ||
+                          status == MaximaStatus.starting
+                      ? null
+                      : () => context.read<MaximaCubit>().signInForLan(),
+                ),
+              ],
+            ),
+            Expanded(
+              child: BlocProvider(
+                create: (_) => ServerListCubit(browseLan: true),
+                child: const ServerBrowser(),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return CallbackShortcuts(
       bindings: <ShortcutActivator, VoidCallback>{
         LogicalKeySet(.control, .shift, .alt): _toggleFrbDebugLogs,
@@ -63,19 +104,11 @@ class _MaximaLoginState extends State<MaximaLogin> {
                       BlocBuilder<MaximaCubit, MaximaState>(
                         builder: _buildContent,
                       ),
-                      BlocBuilder<MaximaCubit, MaximaState>(
-                        builder: (context, state) {
-                          if (_loading ||
-                              state.status == MaximaStatus.loading ||
-                              state.status == MaximaStatus.starting) {
-                            return const SizedBox.shrink();
-                          }
-                          return KyberButton(
-                            text: 'LAN — WITHOUT KYBER SERVICES',
-                            onPressed: () => context
-                                .read<MaximaCubit>()
-                                .requestLogin(lanOnly: true),
-                          );
+                      KyberButton(
+                        text: 'BROWSE LAN SERVERS',
+                        onPressed: () {
+                          context.read<LightswitchCubit>().enableLanMode();
+                          setState(() => _browsingLan = true);
                         },
                       ),
                     ],
@@ -154,11 +187,11 @@ class _MaximaLoginState extends State<MaximaLogin> {
       error,
       stackTrace,
     ) {
-      if (error is! PanicException && error! is AnyhowException) return;
-
-      final raw = error is PanicException
-          ? error.message
-          : (error! as AnyhowException).message;
+      final raw = switch (error) {
+        PanicException(:final message) => message,
+        AnyhowException(:final message) => message,
+        _ => error.toString(),
+      };
 
       final message = _mapLoginError(raw);
 

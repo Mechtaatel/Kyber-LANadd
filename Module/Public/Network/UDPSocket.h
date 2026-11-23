@@ -159,6 +159,7 @@ public:
 
 private:
     friend class SocketManager;
+    int ReceiveDatagram(uint8_t* buffer, int bufferSize, sockaddr_in& peer);
     bool HandleDiscovery(const uint8_t* data, int size, const sockaddr_in& peer);
     struct DiscoveryPeer
     {
@@ -167,6 +168,7 @@ private:
     };
     std::unordered_map<uint64_t, DiscoveryPeer> m_discoveryPeers;
     uint64_t m_discoveryCleanup = 0;
+    bool m_preferDirectReceive = false;
 
     SocketAddr m_broadcastAddress;
     SocketAddr m_peerAddress;

@@ -9,7 +9,8 @@ namespace Kyber
 {
 bool IndependentLanEnabled()
 {
-    return PlatformUtils::GetEnv("KYBER_LAN_INDEPENDENT", "0") == "1";
+    static const bool enabled = PlatformUtils::GetEnv("KYBER_LAN_INDEPENDENT", "0") == "1";
+    return enabled;
 }
 
 std::optional<uint64_t> CreateLanPlayerId()

@@ -1,5 +1,4 @@
 import 'package:collection/collection.dart';
-import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:grpc/grpc.dart' hide Server;
 import 'package:kyber/kyber.dart' hide ServerMod;
@@ -29,10 +28,11 @@ class KyberServerHelper {
     bool? spectator,
     String? password,
     bool queueIfFull = false,
+    bool resolveLanRoute = true,
   }) async {
     // Selections/invite links may predate the last scan. Resolve LAN again
     // immediately before joining, including when an online row was selected.
-    if (!server.isLan) {
+    if (resolveLanRoute && !server.isLan) {
       final local =
           (await LanDiscovery().discover(
             hostPort: Preferences.hostServer.port,
@@ -172,25 +172,16 @@ class KyberServerHelper {
 
       await proxyCubit.ensureReady();
       final proxies = proxyCubit.state.proxies;
-      var selectedProxy = proxies.firstWhereOrNull(
-        (p) => p.proxy.id == Preferences.general.proxy,
-      );
-      if (selectedProxy == null) {
-        selectedProxy = proxies.firstOrNull;
-        _logger.warning(
-          'No proxy selected, using ${selectedProxy?.proxy.name} instead',
-        );
-        if (selectedProxy == null) {
-          _logger.severe('No proxy available');
-          throw Exception('No proxy available');
-        }
-
-        NotificationService.showNotification(
-          message:
-              'Selected Proxy not available, using ${selectedProxy.proxy.name} instead',
-          severity: InfoBarSeverity.warning,
-        );
-      }
+      // The game module resolves the host's pinned proxy itself if its ping
+      // endpoint did not reply. Preserve that existing join path.
+      final selectedProxy =
+          KyberProxy.forServer(
+            proxies,
+            server,
+            proxyCubit.state.selectedProxy,
+          ) ??
+          proxies.firstOrNull;
+      if (selectedProxy == null) throw StateError('No proxy available');
 
       _logger.info(
         'Joining server with proxy ${selectedProxy.proxy.name} (${selectedProxy.proxy.ip})',
@@ -295,6 +286,7 @@ class KyberServerHelper {
         );
         await joinServer(
           server,
+          resolveLanRoute: false,
           selectedCollection: selectedCollection,
           spectator: spectator,
           password: password,

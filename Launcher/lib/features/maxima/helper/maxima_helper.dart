@@ -3,15 +3,21 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge.dart';
 import 'package:kyber/kyber.dart';
 import 'package:kyber_collection/kyber_collection.dart';
 import 'package:kyber_launcher/core/services/app_settings.dart';
+import 'package:kyber_launcher/core/services/lan_add_update_service.dart';
+import 'package:kyber_launcher/core/services/lan_module_updater.dart';
+import 'package:kyber_launcher/core/services/module_version_service.dart';
+import 'package:kyber_launcher/core/routing/app_router.dart';
 import 'package:kyber_launcher/core/services/notification_service.dart';
 import 'package:kyber_launcher/core/services/windows_env.dart';
 import 'package:kyber_launcher/features/frosty/dialogs/frosty_pack_selector_dialog.dart';
 import 'package:kyber_launcher/features/game/dialogs/mod_limit_dialog.dart';
 import 'package:kyber_launcher/features/kyber/services/kyber_grpc_service.dart';
+import 'package:kyber_launcher/features/kyber/providers/kyber_proxy_cubit.dart';
 import 'package:kyber_launcher/features/maxima/dialogs/maxima_start_game_dialog.dart';
 import 'package:kyber_launcher/features/maxima/extensions/server_mod.dart';
 import 'package:kyber_launcher/features/maxima/models/maxima_game_instance.dart';
@@ -180,6 +186,22 @@ class MaximaHelper {
                 .map((mod) => mod.toCollectionMod()),
           );
     final moduleDirectory = FileHelper.getGameModuleDirectory(lanOnly: lanOnly);
+    if (lanOnly &&
+        Platform.isWindows &&
+        Preferences.general.checkLanAddUpdates) {
+      try {
+        await LanModuleUpdater(LanAddUpdateService()).update(
+          moduleDirectory,
+          channel: VersionModule.installer.releaseChannel,
+        );
+      } on Object catch (error, stack) {
+        _logger.warning(
+          'LAN module update unavailable; using installed module',
+          error,
+          stack,
+        );
+      }
+    }
     final missingFiles = <String>[];
     for (final name in FileHelper.modulePayloadFiles) {
       final file = File(p.join(moduleDirectory.path, name));
@@ -260,10 +282,33 @@ class MaximaHelper {
     sl.get<KyberGRPCServer>().setInitializeRequest(
       initializeRequest ?? InitializeRequest(),
     );
-    final gamePID = await maxima.startGame(
-      gameSlug: gameSlug ?? 'star-wars-battlefront-2',
-      gamePathOverride: gamePath,
-    );
+    final hostProxies =
+        !lanOnly && (initializeRequest?.hasStartServer() ?? false)
+        ? navigatorKey.currentContext?.read<KyberProxyCubit>().state.proxies
+        : null;
+    final existingMeta = Platform.environment['KYBER_SERVER_META'];
+    final publishPings = hostProxies != null && hostProxies.isNotEmpty;
+    late final int gamePID;
+    try {
+      if (publishPings) {
+        ProcessEnv.set(
+          'KYBER_SERVER_META',
+          KyberProxy.hostMetadata(existingMeta ?? '', hostProxies),
+        );
+      }
+      gamePID = await maxima.startGame(
+        gameSlug: gameSlug ?? 'star-wars-battlefront-2',
+        gamePathOverride: gamePath,
+      );
+    } finally {
+      if (publishPings) {
+        if (existingMeta == null) {
+          ProcessEnv.delete('KYBER_SERVER_META');
+        } else {
+          ProcessEnv.set('KYBER_SERVER_META', existingMeta);
+        }
+      }
+    }
     _logger.info('Started game with PID: $gamePID');
 
     final gameClient = ClientGRPCService('127.0.0.1', interfacePort);

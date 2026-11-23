@@ -332,6 +332,7 @@ class SessionCubit extends Cubit<SessionState> {
       );
       await KyberServerHelper.joinServer(
         server,
+        resolveLanRoute: false,
         selectedCollection: info.selectedCollection,
         spectator: info.spectator,
         password: info.password,

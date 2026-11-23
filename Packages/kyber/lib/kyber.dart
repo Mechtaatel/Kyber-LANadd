@@ -1,6 +1,7 @@
 library kyber;
 
 export 'src/lan_discovery.dart';
+export 'src/proxy_latency.dart';
 
 export 'gen/Proto/kyber_api.pb.dart';
 export 'gen/Proto/kyber_common.pb.dart';
